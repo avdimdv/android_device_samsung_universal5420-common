@@ -1,5 +1,30 @@
---- a/mixer_paths_0.xml
-+++ b/mixer_paths_0.xml
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: avdim <avdimdv@gmail.com>
+Date: Mon, 9 Nov 2026 23:54:13 +0100
+Subject: [PATCH 1/2] chagall-common: audio: Raise main mic gain, fix
+ out-of-range values
+
+Calls and recordings with the built-in mic were very quiet. main-mic now
+uses analog PGA +6 dB and digital +9 dB, about +15 dB in total. Two
+other paths that set IN1L Volume to 24 now use 28.
+
+The kernel rejects writes beyond a control's range, so these values never
+took effect:
+- voice-rec IN1x Volume 39/42: the analog PGA maximum is 31. Clamp to 31
+  and raise the digital gain instead (135 -> 150).
+- SPKOUTx Input 1/3 Volume 70: the mixer maximum is 48 (+16 dB). Use
+  42 and 38.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Change-Id: I2640d2833d14b0deb0b168257acbe6587435bbe6
+---
+ configs/audio/mixer_paths_0.xml | 29 +++++++++++++++++------------
+ 1 file changed, 17 insertions(+), 12 deletions(-)
+
+diff --git a/configs/audio/mixer_paths_0.xml b/configs/audio/mixer_paths_0.xml
+index 043ef02..c67acfc 100644
+--- a/configs/audio/mixer_paths_0.xml
++++ b/configs/audio/mixer_paths_0.xml
 @@ -160,6 +160,7 @@
          <ctl name="HPOUT1R Input 2" value="ASRC2R" />
      </path>
@@ -20,18 +45,7 @@
          <ctl name="LHPF1 Input 1 Volume" value="32" />
      </path>
  
-@@ -208,6 +210,10 @@
-         <ctl name="ASRC2R Input" value="AIF3RX2" />
-         <ctl name="AIF2TX1 Input 1" value="None" />
-         <ctl name="AIF2TX2 Input 1" value="None" />
-+        <!-- MOD: verb-voicecall sets AIF2 Slave, and the machine driver stops FLL2 (ASYNCCLK)
-+             on Master->Slave. No modem drives AIF2 on Wi-Fi models, so AIF3 (BT SCO, codec
-+             clock master) loses its clocks -> silent BT calls. Keep Master (ctl: last wins). -->
-+        <ctl name="AIF2 Mode" value="Master" />
-     </path>
- 
-     <!--
-@@ -286,11 +292,12 @@
+@@ -286,11 +288,12 @@
  
      <path name="voice-speaker">
          <path name="speaker" />
@@ -48,7 +62,7 @@
      </path>
  
      <path name="voice-speaker-wb">
-@@ -347,14 +354,14 @@
+@@ -347,14 +350,14 @@
      <path name="voice-mic">
          <path name="main-mic" />
          <ctl name="IN1L Volume" value="30" />
@@ -65,7 +79,7 @@
          <ctl name="IN1L Digital Volume" value="150" />
          <ctl name="LHPF1 Input 1 Volume" value="32" />
  
-@@ -370,7 +377,7 @@
+@@ -370,7 +373,7 @@
  
      <path name="voice-speaker-mic">
          <path name="main-mic" />
@@ -74,7 +88,7 @@
          <ctl name="IN1L Digital Volume" value="150" />
          <ctl name="LHPF1 Input 1 Volume" value="32" />
  
-@@ -413,15 +420,17 @@
+@@ -413,15 +416,17 @@
  
      <path name="voice-rec-headset-mic">
          <path name="headset-mic" />
@@ -95,3 +109,6 @@
          <ctl name="LHPF1 Input 1 Volume" value="32" />
      </path>
  
+-- 
+2.25.1
+

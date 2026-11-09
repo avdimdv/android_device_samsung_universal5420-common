@@ -1,0 +1,6 @@
+id=chagall_bt_sco_fix
+name=Tab S 10.5 BT call fix (libbt rebuilt)
+version=v1
+versionCode=1
+author=Dmitry
+description=libbt-vendor.so rebuilt with BOARD_CUSTOM_BT_CONFIG + BTHW_FW_EXTENDED_CONFIGURATION (I2S slave). Disable if BT breaks.

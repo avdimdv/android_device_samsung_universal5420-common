@@ -17,3 +17,16 @@ if [ -s "$PATCH" ]; then git -C "$DST" apply --whitespace=nowarn "$PATCH"; else 
 rm -f "$PATCH"
 echo "build tree at $(git -C "$DST" log --oneline -1)"
 git -C "$DST" status --short
+
+# patches/<project path>/*.patch: changes to other repos of the tree (e.g. chagall-common ships
+# mixer_paths_0.xml). Each project is reset to its manifest revision and the patches re-applied.
+cd "$SRC/patches"
+for PROJ in $(find . -name '*.patch' -printf '%h\n' | sed 's#^\./##' | sort -u); do
+  P=$TOP/$PROJ
+  BASE=$(git -C "$P" for-each-ref --format='%(refname)' refs/remotes/m | head -1)
+  [ -n "$BASE" ] || { echo "$PROJ: no manifest ref"; exit 1; }
+  git -C "$P" am --abort 2>/dev/null || true
+  git -C "$P" checkout -q -- . && git -C "$P" checkout -q --detach "$BASE"
+  git -C "$P" -c user.name=build-env -c user.email=build-env@localhost am -q "$SRC/patches/$PROJ"/*.patch
+  echo "$PROJ: $(git -C "$P" log --oneline "$BASE"..HEAD | wc -l) patch(es) on $(git -C "$P" rev-parse --short "$BASE")"
+done

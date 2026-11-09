@@ -18,10 +18,26 @@ Windows PC, using WSL2 Ubuntu 20.04 (the officially supported host for 17.1).
 ```
 wsl -d Ubuntu -u root -- bash 01-setup-host.sh      # once: packages + repo
 wsl -d Ubuntu -- bash 02-sync.sh                    # ~70 GB into ~/lineage (ext4 inside WSL)
-wsl -d Ubuntu -- bash 03-overlay-local-tree.sh      # copy D:\ working copy (incl. uncommitted edits) into the tree
+wsl -d Ubuntu -- bash 03-overlay-local-tree.sh      # this repo (incl. uncommitted edits) + patches/ into the tree
 wsl -d Ubuntu -- bash 04-build.sh                   # libbt-vendor + audio HAL only
 wsl -d Ubuntu -- bash 04-build.sh bacon             # full flashable zip
+wsl -d Ubuntu -- bash 05-make-magisk-modules.sh     # artifacts\<module-id>.zip for testing without reflashing
 ```
+
+## Changes to other repos: `patches/`
+
+`patches/<project path>/*.patch` (git format-patch) are applied by `03-overlay` to that project of
+the build tree, after resetting it to its manifest revision. Currently
+`patches/device/samsung/chagall-common/`: mixer_paths_0.xml mic gain + BT SCO AIF2/FLL2 fix
+(the ROM takes mixer_paths from chagall-common, not from this repo).
+To change one: edit in `~/lineage/device/samsung/chagall-common`, commit, then
+`git format-patch --zero-commit -o <repo>/patches/device/samsung/chagall-common m/lineage-17.1`.
+
+## Magisk modules: `magisk/`
+
+`magisk/template/` = installer (`META-INF`) + `customize.sh` that copies each replaced file's
+SELinux label. `magisk/modules/<id>/` = `module.prop` + `files` (module path → source in the build
+tree). `05-make-magisk-modules.sh [id ...]` zips them into `artifacts\<id>.zip`.
 
 Output: `~/lineage/out/target/product/chagallwifi/` (WSL path
 `\\wsl$\Ubuntu\home\avdeev\lineage\out\target\product\chagallwifi`).
@@ -38,10 +54,10 @@ WSL2 "Ubuntu" 20.04  ~/lineage                           (Linux ext4 disk =
    │  .repo (31 GB git data) + checked-out sources          %LOCALAPPDATA%\Packages\CanonicalGroupLimited.Ubuntu_*\LocalState\ext4.vhdx)
    │  04-build: Soong/Make + clang, ccache in ~/.ccache
    ▼
-~/lineage/out/target/product/chagallwifi/system/vendor/lib/libbt-vendor.so
-   │  05-make-bt-module: zip + copy over /mnt/d (WSL's view of D:\)
+~/lineage/out/... (libs), ~/lineage/device/... (configs, incl. patched chagall-common)
+   │  05-make-magisk-modules: zip + write over /mnt/d (WSL's view of D:\)
    ▼
-D:\...\artifacts\TabS_bt_sco_fix.zip, libbt-vendor.so, .md5   → copy to tablet → Magisk
+D:\...\artifacts\<module-id>.zip   → adb push to /sdcard/Download → Magisk
 ```
 
 - WSL sees Windows drives as `/mnt/c`, `/mnt/d`; Windows sees the Linux disk as `\\wsl$\Ubuntu\home\avdeev`.

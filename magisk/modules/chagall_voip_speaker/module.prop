@@ -1,0 +1,6 @@
+id=chagall_voip_speaker
+name=Tab S 10.5 VoIP to speaker (no earpiece)
+version=v1
+versionCode=1
+author=Dmitry
+description=audio_policy_configuration.xml without Earpiece: VoIP calls use speaker / wired / BT headset instead of a non-existent earpiece.

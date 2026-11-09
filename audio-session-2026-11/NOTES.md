@@ -49,23 +49,24 @@ needed to continue in Claude Code. Paths below are relative to this folder.
 
 ### Mic (barely audible) – FIXED
 - `main-mic`: IN1L 24 → **30**, IN1L Digital 128 → **146** (+15 dB total); call paths +4 dB;
-  invalid values clamped to 31. Speaker values left stock. See `config/mixer_paths_0.micfix.diff`.
-- Installed as Magisk module `magisk/TabS_mic_fix.zip` (id `chagall_mic_fix`). Confirmed working.
+  invalid values clamped to 31. Speaker values left stock. Now in
+  `../patches/device/samsung/chagall-common/0001-*.patch` (the ROM takes mixer_paths from chagall-common).
+- Magisk module id `chagall_mic_fix` (`../magisk/modules/`, built by `../build-env/05-make-magisk-modules.sh`). Confirmed working.
 
 ### VoIP calls (Telegram) play nothing until "Speaker" is pressed
 - Cause: `configs/audio/audio_policy_configuration.xml` in this device tree lists
   **`Earpiece` in `<attachedDevices>`**; the Wi-Fi tablet has no earpiece, so Telecom routes
   communication audio to EARPIECE (seen in logcat: `route: EARPIECE`).
-- **Fix (2026-11-09, pending test):** Earpiece removed from attachedDevices, devicePorts and routes
-  in `configs/audio/audio_policy_configuration.xml` (uncommitted). Engine falls back to
+- **Fix (verified 2026-11-09, committed):** Earpiece removed from attachedDevices, devicePorts and routes
+  in `configs/audio/audio_policy_configuration.xml`. Engine falls back to
   `defaultOutputDevice` (Speaker); Telecom only offers EARPIECE if `TYPE_BUILTIN_EARPIECE` exists.
-  Test module: `artifacts/TabS_voip_speaker.zip` (id `chagall_voip_speaker`, from
-  `build-env/07-make-policy-module.sh`). Note: file is shared by all universal5420 devices.
+  Magisk module id `chagall_voip_speaker`. Telegram call without BT went to `speaker` at once. Note: file is shared by all universal5420 devices.
 
 ### Bluetooth
 - **A2DP music**: does not go through the codec. `persist.bluetooth.disableabsvol=true` is already
   set in this tree (`system_prop.mk`) → headset volume independent. User accepts this.
-- **HFP/SCO calls (Telegram + Jabra Elite 75t): total silence both directions.** Not fixed.
+- **HFP/SCO calls (Telegram + Jabra Elite 75t): FIXED 2026-11-09** (audio both ways, volume low).
+  History below; two causes, see "Root cause" and "2026-11-09 test".
   - SCO link comes up, CVSD narrowband (`bt_wbs=off`), HAL applies `bt-sco-headset`/`bt-sco-mic`,
     AIF3 routing correct (`AIF3TX1 Input 1 = ASRC1L`, `ASRC2L Input = AIF3RX1`), and the HAL
     has `pcmC0D2p` + `pcmC0D2c` open during the call (`logs/bt_test.txt`).
@@ -101,8 +102,7 @@ needed to continue in Claude Code. Paths below are relative to this folder.
       would be a libbt patch that also sends `HCI_VSC_WRITE_SCO_PCM_INT_PARAM` (routing 0).
   - Build chain: see `../build-env/README.md`. **Verified**: unmodified build of libbt-vendor.so is
     byte-identical to the tablet's (md5 ab514846...), generated from `vnd_generic.txt`.
-  - Fixed lib: `bluetooth/libbt-vendor.sco-fix.so` (md5 e5793f73...), Magisk module
-    `../artifacts/TabS_bt_sco_fix.zip` (id `chagall_bt_sco_fix`). Before the fix, a BT off/on log shows
+  - Fixed lib: md5 e5793f73..., Magisk module id `chagall_bt_sco_fix`. Before the fix, a BT off/on log shows
     `vendor lib fwcfg completed` going straight to `OnFirmwareConfigured` (no I2SPCM config sent).
   - **2026-11-09 test of sco-fix lib:** `I2SPCM config {0x1, 0x0, 0x0, 0x1}`, result 0, A2DP fine,
     SCO link opens (CVSD, `bt_wbs=off`), HAL opens AIF3 8 kHz/BCLK 256 kHz – but call still silent
@@ -112,9 +112,8 @@ needed to continue in Claude Code. Paths below are relative to this folder.
     feeds AIF2/AIF3; nothing restarts it (only AIF2 hw_params does) and no modem drives AIF2 on
     Wi-Fi models → AIF3 has no clocks → silence. Same in the stock mixer file.
   - Fix (**verified 2026-11-09: BT call audio both ways**, volume low): `<ctl name="AIF2 Mode" value="Master" />` at the end of `bt-sco-hs-mic`
-    in `config/mixer_paths_0.micfix.xml` (libaudioroute: direct `<ctl>` = last wins, sub-`<path>`
-    duplicates = first wins). Packaged by `build-env/06-make-mixer-module.sh` as
-    `artifacts/TabS_mic_fix.zip` v2 (same id `chagall_mic_fix`, replaces v1).
+    (libaudioroute: direct `<ctl>` = last wins, sub-`<path>` duplicates = first wins). In
+    `../patches/device/samsung/chagall-common/0002-*.patch`; Magisk module `chagall_mic_fix` v2.
 
 ### JamesDSP setup (current, working)
 - Module: `Magisk-Modules-Repo/ainur_jamesdsp` (MMT-Extended). Install aborted with

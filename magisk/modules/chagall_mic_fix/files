@@ -1,0 +1,2 @@
+# <path in module>  <source, relative to the build tree ~/lineage> (patched by 03-overlay)
+system/vendor/etc/mixer_paths_0.xml  device/samsung/chagall-common/configs/audio/mixer_paths_0.xml

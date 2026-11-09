@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: avdim <avdimdv@gmail.com>
+Date: Mon, 9 Nov 2026 23:54:14 +0100
+Subject: [PATCH 2/2] chagall-common: audio: Keep AIF2 master for BT SCO mic
+
+bt-sco-hs-mic includes verb-voicecall, which sets "AIF2 Mode" to Slave.
+On Master->Slave, the machine driver (adonisuniv_wm5102.c,
+set_aif2_mode) stops FLL2. FLL2 is ASYNCCLK, which also clocks AIF3, the
+I2S link to the BCM4350. On Wi-Fi models no modem drives AIF2, and only
+AIF2 hw_params restarts FLL2. So once a VoIP app opened the BT mic, the
+AIF3 clocks stopped and Bluetooth calls were silent in both directions.
+
+Override AIF2 Mode back to Master in bt-sco-hs-mic. In libaudioroute a
+direct <ctl> overrides earlier values (last wins); a duplicate from a
+sub-<path> would be ignored.
+
+Verified on SM-T800 (Telegram call, Jabra Elite 75t): audio both ways.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Change-Id: I40d7592da08f7345a992fff4cdf750fe7f901d79
+---
+ configs/audio/mixer_paths_0.xml | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/configs/audio/mixer_paths_0.xml b/configs/audio/mixer_paths_0.xml
+index c67acfc..96de205 100644
+--- a/configs/audio/mixer_paths_0.xml
++++ b/configs/audio/mixer_paths_0.xml
+@@ -210,6 +210,10 @@
+         <ctl name="ASRC2R Input" value="AIF3RX2" />
+         <ctl name="AIF2TX1 Input 1" value="None" />
+         <ctl name="AIF2TX2 Input 1" value="None" />
++        <!-- MOD: verb-voicecall sets AIF2 Slave, and the machine driver stops FLL2 (ASYNCCLK)
++             on Master->Slave. No modem drives AIF2 on Wi-Fi models, so AIF3 (BT SCO, codec
++             clock master) loses its clocks -> silent BT calls. Keep Master (ctl: last wins). -->
++        <ctl name="AIF2 Mode" value="Master" />
+     </path>
+ 
+     <!--
+-- 
+2.25.1
+

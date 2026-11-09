@@ -11,6 +11,10 @@ routing in `configs/audio/audio_policy_configuration.xml`, Bluetooth SCO call au
 
 Build chain (WSL Ubuntu 20.04, tree at `~/lineage`): see `build-env/README.md`. Edit files here
 on D:\, then `build-env/03-overlay-local-tree.sh` + `04-build.sh` inside WSL.
+Changes to other repos of the tree (e.g. `mixer_paths_0.xml`, which lives in chagall-common) are
+kept as `patches/<project path>/*.patch`, applied by 03. Magisk test modules: sources in
+`magisk/`, built by `build-env/05-make-magisk-modules.sh` into `artifacts\` (git-ignored).
+Branch `audio-bt-call-fixes` is local only – never push.
 
 The tablet is reachable with `adb` from this Windows PC; root only via
 `adb shell "su -c '...'"` (adb root is disabled).
