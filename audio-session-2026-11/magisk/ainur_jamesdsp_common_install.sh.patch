@@ -1,0 +1,11 @@
+--- a/common/install.sh
++++ b/common/install.sh
+@@ -67,7 +67,7 @@
+ ui_print "- UI installation -"
+ ui_print "   Which UI you want to install?"
+ ui_print "   Vol Up = Original, Vol Down = ThePBone"
+-if chooseport; then
++if true; then  # patched: no volume-key prompt, Original UI
+   ui_print "   Original version was selected"
+   mv -f $MODPATH/common/files/JamesDSPManager.apk $MODPATH/JamesDSPManager.apk
+   touch $MODPATH/.apkorig

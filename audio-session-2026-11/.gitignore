@@ -1,0 +1,4 @@
+# Raw captures and binaries stay local (see NOTES.md); magisk/*.zip are templates used by build-env scripts
+logs/
+screenshots/
+bluetooth/*.so

@@ -1,0 +1,4 @@
+# Build outputs and adb captures (binaries are not committed)
+*
+!.gitignore
+!README.md
