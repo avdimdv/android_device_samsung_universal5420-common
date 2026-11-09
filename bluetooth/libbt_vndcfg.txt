@@ -1,7 +1,13 @@
 BLUETOOTH_UART_DEVICE_PORT = "/dev/ttySAC0"
-FW_PATCHFILE_LOCATION = "/vendor/firmware"
+FW_PATCHFILE_LOCATION = "/vendor/firmware/"
 FW_PATCH_SETTLEMENT_DELAY_MS = 100
-UART_TARGET_BAUD_RATE = 921600
+# Keep the 3 Mbaud libbt default the shipped (vnd_generic) build used; 921600 was never applied.
+UART_TARGET_BAUD_RATE = 3000000
 LPM_IDLE_TIMEOUT_MULTIPLE = 5
+# BT SCO goes over I2S to WM5110 AIF3. The kernel machine driver sets AIF3 as
+# clock master (SND_SOC_DAIFMT_CBM_CFM), so the BCM4350 must be I2S slave.
 SCO_USE_I2S_INTERFACE = TRUE
 SCO_I2SPCM_IF_ROLE = 0
+# The Treble BT HAL (android.hardware.bluetooth@1.0) never calls BT_VND_OP_SCO_CFG,
+# so without this the I2S/PCM SCO config VSC is never sent to the controller.
+BTHW_FW_EXTENDED_CONFIGURATION = TRUE
