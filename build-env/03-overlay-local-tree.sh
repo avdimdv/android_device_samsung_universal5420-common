@@ -11,5 +11,9 @@ WIN_HEAD=$(git -C "$SRC" rev-parse HEAD)
 git -C "$DST" checkout -q -- . && git -C "$DST" clean -qfd
 git -C "$DST" cat-file -e "$WIN_HEAD" 2>/dev/null || git -C "$DST" fetch -q "$SRC" "$WIN_HEAD"
 git -C "$DST" checkout -q "$WIN_HEAD"
-git -c core.autocrlf=true -C "$SRC" diff HEAD -- . ':!audio-session-2026-11' ':!build-env' ':!CLAUDE.md' | git -C "$DST" apply --whitespace=nowarn
+PATCH=$(mktemp)
+git -c core.autocrlf=true -C "$SRC" diff HEAD -- . ':!audio-session-2026-11' ':!build-env' ':!artifacts' ':!CLAUDE.md' > "$PATCH" 2>/dev/null
+if [ -s "$PATCH" ]; then git -C "$DST" apply --whitespace=nowarn "$PATCH"; else echo "no uncommitted edits"; fi
+rm -f "$PATCH"
+echo "build tree at $(git -C "$DST" log --oneline -1)"
 git -C "$DST" status --short
