@@ -7,8 +7,10 @@
 
     <modules>
         <module name="primary" halVersion="3.0">
+            <!-- No Earpiece: the Tab S has none. Listing it made Telecom/VoIP apps (Telegram) route
+                 calls to EARPIECE = silence until "Speaker" was tapped. Without it, communication
+                 audio falls back to defaultOutputDevice (Speaker) or a wired/BT headset. -->
             <attachedDevices>
-                <item>Earpiece</item>
                 <item>Speaker</item>
                 <item>Built-In Mic</item>
                 <item>Built-In Back Mic</item>
@@ -35,10 +37,6 @@
 
             <devicePorts>
                 <!-- output devices declaration, i.e. Sink DEVICE PORT -->
-                <devicePort tagName="Earpiece" role="sink" type="AUDIO_DEVICE_OUT_EARPIECE">
-                   <profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
-                            samplingRates="48000" channelMasks="AUDIO_CHANNEL_OUT_MONO"/>
-                </devicePort>
                 <devicePort tagName="Speaker" role="sink" type="AUDIO_DEVICE_OUT_SPEAKER">
                    <profile name="" format="AUDIO_FORMAT_PCM_16_BIT"
                             samplingRates="48000" channelMasks="AUDIO_CHANNEL_OUT_STEREO"/>
@@ -98,8 +96,6 @@
             </devicePorts>
 
             <routes>
-                <route sink="Earpiece" type="mix"
-                       sources="primary-out"/>
                 <route sink="Speaker" type="mix"
                        sources="primary-out"/>
                 <route sink="Wired Headset" type="mix"
