@@ -1,0 +1,6 @@
+id=chagall_fixes
+name=Tab S 10.5 (SM-T800) audio + BT fixes
+version=v1
+versionCode=1
+author=Dmitry
+description=BT call audio (libbt I2S slave + SCO config), mic gain + BT SCO clock (mixer_paths), VoIP to speaker (no earpiece), working AEC/NS config (+JamesDSP entry if installed), AudioFX hidden.

@@ -1,6 +1,6 @@
 # Sourced by Magisk's install_module. Give every file this module replaces the SELinux label
 # of the original (vendor files must not get Magisk's default system_file label).
-for F in $(cd "$MODPATH" && find system -type f); do
+for F in $(cd "$MODPATH" && find system -type f ! -name .replace); do
   CTX=$(ls -Z "/$F" 2>/dev/null | awk '{print $1}')
   if [ -z "$CTX" ]; then
     case "$F" in

@@ -1,5 +1,7 @@
 #!/bin/bash
-# Build Magisk modules from magisk/modules/<id>/ (module.prop + files list) and magisk/template/.
+# Build Magisk modules from magisk/template/ + magisk/modules/<id>/:
+#   module.prop, files (module path <- build-tree source), customize.sh (appended to the template's),
+#   any other file (scripts, system/.../.replace) copied as is.
 # Files are taken from the WSL build tree, so run 03-overlay (and 04-build for libraries) first.
 # Run in WSL:  bash 05-make-magisk-modules.sh [module-id ...]    (default: all)
 #   -> <repo>/artifacts/<module-id>.zip
@@ -14,7 +16,11 @@ for ID in $MODS; do
   [ -f "$M/module.prop" ] || { echo "no such module: $ID"; exit 1; }
   W=$(mktemp -d)
   cp -r "$REPO/magisk/template/." "$W/"
-  cp "$M/module.prop" "$W/"
+  (cd "$M" && find . -type f ! -name files ! -name customize.sh) | while read -r f; do
+    mkdir -p "$W/$(dirname "$f")"; cp "$M/$f" "$W/$f"
+  done
+  [ -f "$M/customize.sh" ] && cat "$M/customize.sh" >> "$W/customize.sh"
+  [ -f "$W/post-fs-data.sh" ] && chmod 0755 "$W/post-fs-data.sh"
   grep -v '^\s*#' "$M/files" | while read -r DEST SRC; do
     [ -n "$DEST" ] || continue
     [ -f "$TOP/$SRC" ] || { echo "$ID: missing $TOP/$SRC"; exit 1; }

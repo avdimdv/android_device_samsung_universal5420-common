@@ -1,2 +1,0 @@
-# <path in module>  <source, relative to the build tree ~/lineage>
-system/vendor/etc/audio_policy_configuration.xml  device/samsung/universal5420-common/configs/audio/audio_policy_configuration.xml

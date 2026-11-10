@@ -1,0 +1,7 @@
+# <path in module>  <source, relative to the build tree ~/lineage>
+# Run build-env/03-overlay (applies patches/) and 04-build first.
+system/vendor/lib/libbt-vendor.so                 out/target/product/chagallwifi/system/vendor/lib/libbt-vendor.so
+system/vendor/etc/mixer_paths_0.xml               device/samsung/chagall-common/configs/audio/mixer_paths_0.xml
+system/vendor/etc/audio_policy_configuration.xml  device/samsung/universal5420-common/configs/audio/audio_policy_configuration.xml
+system/vendor/etc/audio_effects.xml               device/samsung/universal5420-common/configs/audio/audio_effects.xml
+audio_effects.base.xml                            device/samsung/universal5420-common/configs/audio/audio_effects.xml
