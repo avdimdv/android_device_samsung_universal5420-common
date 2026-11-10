@@ -1,0 +1,31 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="dsp.bs2b.mode">5</string>
+    <boolean name="dsp.masterswitch.enable" value="true" />
+    <string name="dsp.stereowide.mode">60</string>
+    <string name="dsp.compression.tfresolution">0</string>
+    <string name="dsp.tone.eq">custom</string>
+    <string name="dsp.compression.eq.custom">95.0000000;200.0000000;400.0000000;800.0000000;1600.0000000;3400.0000000;7500.0000000;0.0000000;0.4728358;0.5874627;0.6017911;0.6035821;0.5749254;0.3438806;</string>
+    <string name="dsp.convolver.resampler"></string>
+    <string name="dsp.masterswitch.limthreshold">-9.0</string>
+    <boolean name="dsp.compression.enable" value="true" />
+    <string name="dsp.compression.eq">custom</string>
+    <boolean name="dsp.tone.enable" value="true" />
+    <string name="dsp.masterswitch.limrelease">60.0</string>
+    <string name="dsp.convolver.mode">0</string>
+    <string name="dsp.convolver.advimp">-80;-100;0;0;0;0</string>
+    <string name="dsp.headphone.preset">18</string>
+    <boolean name="dsp.headphone.enable" value="false" />
+    <string name="dsp.analogmodelling.tubedrive">2.0</string>
+    <string name="dsp.convolver.files">Error: No IR file selected</string>
+    <string name="dsp.streq.stringp">GraphicEQ: 0.0 0.0; </string>
+    <string name="dsp.tone.filtertype">3</string>
+    <string name="dsp.compression.granularity">2</string>
+    <string name="dsp.tone.eq.custom">25.0000000;40.0000000;63.0000000;100.0000000;160.0000000;250.0000000;400.0000000;630.0000000;1000.0000000;1600.0000000;2500.0000000;4000.0000000;6300.0000000;10000.0000000;16000.0000000;-9.1567173;-9.1791039;-9.2462692;-9.1311550;-6.0335827;-3.2686558;0.0000000;0.0000000;0.0000000;0.0000000;-0.0223875;-0.0223875;0.0000000;0.0000000;0.0000000;</string>
+    <string name="dsp.compression.timeconstant">0.22</string>
+    <string name="dsp.bass.maxgain">5</string>
+    <string name="dsp.masterswitch.postgain">0.0</string>
+    <string name="dsp.tone.interpolation">0</string>
+    <string name="dsp.ddc.files"></string>
+    <string name="dsp.liveprog.files"></string>
+</map>

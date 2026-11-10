@@ -35,10 +35,13 @@ Installing `chagall_fixes` marks the old single-purpose modules (`chagall_bt_sco
      detected; patch hard-selects the Original UI)
    - MagiskHidePropsConf, playintegrityfix (third party, as before)
 3. App settings (live in app data, no module can set them):
-   - JamesDSP: ⋮ → **Reg: Global**; speaker profile: limiter **−9 dB**, IIR EQ (8th order)
-     25/40/63/100 Hz ≈ −9 dB, 160 Hz −6, 250 Hz −3, 2.5k/4k ≈ +1.5; dynamic range compander on
-     (curve in `audio-session-2026-11/NOTES.md`). Export the preset to a file once and keep it in
-     `artifacts\` to make this a one-tap import.
+   - JamesDSP: ⋮ → **Reg: Global**; then restore the saved preset (limiter −9 dB, EQ, compander):
+     ```
+     cd /d D:\SOURCES\android_device_samsung_universal5420-common
+     adb push "audio-session-2026-11\jamesdsp-preset\Tab S 10.5" "/sdcard/JamesDSP/Presets/"
+     ```
+     and load "Tab S 10.5" in the app's preset menu. (Exported 2026-11-10, identical to the live
+     settings at that time; values also in `audio-session-2026-11/NOTES.md`.)
    - SmartTube: Player → Misc → **Auto volume adjustment OFF**.
    - Deathly Adiutor: speaker boost **0 dB** (or uninstall).
 4. Check (Windows cmd, from the repo folder):
