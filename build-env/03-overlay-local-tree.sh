@@ -23,8 +23,15 @@ git -C "$DST" status --short
 cd "$SRC/patches"
 for PROJ in $(find . -name '*.patch' -printf '%h\n' | sed 's#^\./##' | sort -u); do
   P=$TOP/$PROJ
-  BASE=$(git -C "$P" for-each-ref --format='%(refname)' refs/remotes/m | head -1)
-  [ -n "$BASE" ] || { echo "$PROJ: no manifest ref"; exit 1; }
+  # optional patches/<project>/BASE = commit to build on instead of the manifest revision
+  # (kernel: 73a7ba1f is what HazouPH shipped; the branch tip has later, untested commits)
+  if [ -f "$SRC/patches/$PROJ/BASE" ]; then
+    BASE=$(tr -d ' \r\n' < "$SRC/patches/$PROJ/BASE")
+    git -C "$P" cat-file -e "$BASE^{commit}" 2>/dev/null || git -C "$P" fetch -q --deepen=50 github 2>/dev/null || true
+  else
+    BASE=$(git -C "$P" for-each-ref --format='%(refname)' refs/remotes/m | head -1)
+  fi
+  [ -n "$BASE" ] || { echo "$PROJ: no base ref"; exit 1; }
   git -C "$P" am --abort 2>/dev/null || true
   git -C "$P" checkout -q -- . && git -C "$P" checkout -q --detach "$BASE"
   git -C "$P" -c user.name=build-env -c user.email=build-env@localhost am -q "$SRC/patches/$PROJ"/*.patch

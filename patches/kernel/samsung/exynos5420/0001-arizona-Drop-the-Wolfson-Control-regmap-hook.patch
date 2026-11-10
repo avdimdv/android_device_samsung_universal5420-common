@@ -1,0 +1,68 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: avdim <avdimdv@gmail.com>
+Date: Wed, 11 Nov 2026 00:08:23 +0100
+Subject: [PATCH] arizona: Drop the Wolfson Control regmap hook
+
+arizona-control ("Wolfson Control", /sys/class/misc/wolfson_control) hooks
+every regmap write via _regmap_write(). The hook drops map->lock in the
+middle of the write, so read-modify-write sequences are no longer
+atomic. DAPM, the arizona IRQ thread and mixer writes can then lose each
+other's bits. Its callbacks also issue nested codec writes from inside
+the hook, guarded only by an unprotected global ignore_next flag.
+
+It also silently replaces "hidden" fields with the value first written
+at boot. SPKOUT (OUT4) mix input 1 is locked to AIF1RX1/2: mixer and
+tinymix writes report success but never reach the chip, while DAPM
+believes them. Routing DRC1 or EQ3 to the speaker therefore left DAPM
+managing a path that did not exist in hardware. Its own speaker-EQ
+bridge stalls speaker playback (out_write I/O error) until the codec is
+reset.
+
+Remove the hook call and do not register the sysfs interface. Without
+the hook, sysfs writes would only bypass DAPM. Codec register writes now
+behave as upstream, and mixer_paths/DAPM fully own the routing. The
+cost is that apps driving wolfson_control (Deathly Adiutor sound
+controls) stop working.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Change-Id: I54759e9a9a8edbcabbda0365a3426d2edd52da99
+---
+ drivers/base/regmap/regmap.c | 6 ------
+ sound/soc/codecs/wm5102.c    | 4 ----
+ 2 files changed, 10 deletions(-)
+
+diff --git a/drivers/base/regmap/regmap.c b/drivers/base/regmap/regmap.c
+index 8dd07f49..8850f581 100644
+--- a/drivers/base/regmap/regmap.c
++++ b/drivers/base/regmap/regmap.c
+@@ -485,12 +485,6 @@ int _regmap_write(struct regmap *map, unsigned int reg,
+ 	int ret;
+ 	BUG_ON(!map->format.format_write && !map->format.format_val);
+ 
+-#ifdef CONFIG_MFD_ARIZONA
+-	mutex_unlock(&map->lock);
+-	arizona_control_regmap_hook(map, reg, &val);
+-	mutex_lock(&map->lock);
+-#endif
+-
+ 	if (!map->cache_bypass && map->format.format_write) {
+ 		ret = regcache_write(map, reg, val);
+ 		if (ret != 0)
+diff --git a/sound/soc/codecs/wm5102.c b/sound/soc/codecs/wm5102.c
+index 2410c94d..f4489ca2 100644
+--- a/sound/soc/codecs/wm5102.c
++++ b/sound/soc/codecs/wm5102.c
+@@ -1681,10 +1681,6 @@ static int wm5102_codec_probe(struct snd_soc_codec *codec)
+ 
+ 	priv->core.arizona->dapm = &codec->dapm;
+ 
+-#ifdef CONFIG_MFD_ARIZONA
+-	arizona_control_init(codec);
+-#endif
+-
+ 	return 0;
+ }
+ 
+-- 
+2.25.1
+
