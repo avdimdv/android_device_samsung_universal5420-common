@@ -62,6 +62,23 @@ needed to continue in Claude Code. Paths below are relative to this folder.
   `defaultOutputDevice` (Speaker); Telecom only offers EARPIECE if `TYPE_BUILTIN_EARPIECE` exists.
   Magisk module id `chagall_voip_speaker`. Telegram call without BT went to `speaker` at once. Note: file is shared by all universal5420 devices.
 
+### Speakerphone VoIP echo (far end hears itself)
+- Cause (fixed 2026-11-10, `configs/audio/audio_effects.xml`): pre_processing pointed to NXP LifeVibes
+  `liblvvetx.so`; it always fails (`LVVEFS_Create` error 8, capture is 48 kHz). Telegram/WebRTC
+  saw a platform AEC, disabled its own, and the platform one never ran → no AEC at all.
+  Now AOSP `libaudiopreprocessing.so` (AEC + NS for voice_communication only, as AOSP default).
+- WebRTC ignores the AOSP AEC/NS by UUID (`canUseAcousticEchoCanceler: false`, it even disables
+  the auto-attached ones) and runs its own AECM (`echo_canceller: mobile_mode 1`, fixed
+  `delay_estimate 150 ms`). Residual distorted echo remains; it drops further with JamesDSP off
+  (its compressor/limiter makes the echo path non-linear). Mic gain changes don't help (linear).
+- Ideas not done: keep JamesDSP off call audio (toggle in calls / separate VoIP output), or
+  rebuild libaudiopreprocessing with other UUIDs so WebRTC uses it (sees post-JDSP reference
+  and real delay via HAL `push_echo_reference`, same AECM algorithm).
+- On the tablet the active file is JamesDSP's copy
+  `/data/adb/modules/ainur_jamesdsp/system/vendor/etc/audio_effects.xml`, edited by hand
+  (= repo file + jdsp lines; original backed up in `/data/local/tmp/audio_effects.jdsp.orig.xml`).
+  Reinstalling JamesDSP regenerates it from `/vendor/etc` → redo the edit.
+
 ### Bluetooth
 - **A2DP music**: does not go through the codec. `persist.bluetooth.disableabsvol=true` is already
   set in this tree (`system_prop.mk`) → headset volume independent. User accepts this.
