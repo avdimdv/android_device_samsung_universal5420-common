@@ -103,7 +103,7 @@ findings; paths below are relative to this folder.
 - JamesDSP ships its own copy of `/vendor/etc/audio_effects.xml` (generated from the stock one at
   its install). `chagall_fixes/post-fs-data.sh` rewrites both copies at every boot (repo file + jdsp
   lines when JamesDSP is active) – no hand edit any more. Expected md5 with JamesDSP: `05cd6c98…`.
-  (Old pre-fix JamesDSP copy still backed up in `/data/local/tmp/audio_effects.jdsp.orig.xml`.)
+  (Old pre-fix JamesDSP copy saved as `../artifacts/audio_effects.jdsp.orig.xml`.)
 
 ### Bluetooth
 - **A2DP music**: does not go through the codec. `persist.bluetooth.disableabsvol=true` is already
@@ -188,8 +188,8 @@ As of 2026-11-10 02:40 (Magisk 25.2):
   `playintegrityfix`, `MagiskHidePropsConf` (**disabled**, was already; PIF covers it).
   Old `chagall_bt_sco_fix` / `chagall_mic_fix` / `chagall_voip_speaker` / `chagall_bt_sco_slave` removed.
 - Deathly Adiutor speaker boost 0 dB (still installed); SmartTube auto volume off.
-- Leftover test files in `/data/local/tmp` (harmless): `gainstep.sh`, `restart.sh`, `fx.sh`,
-  `rd.sh`, `inv.sh`, `verify.sh`, `jfind.sh`, `audio_effects.*.xml`. `50i96f79`, `7037kk` are not ours (2025).
+- `/data/local/tmp` cleaned 2026-11-10 (only `50i96f79`, `7037kk` left – not ours, 2025). Sweep log
+  and the old JamesDSP effects copy were saved to `../artifacts/` first.
 - `adb reboot` with USB connected may end on the Samsung charging screen (LPM) → hold Power.
 
 ## Next steps (open)
