@@ -53,11 +53,26 @@ findings; paths below are relative to this folder.
   locked to the first value written at boot: **`SPKOUTx Input 1` (OUT4 mix input 1) is locked to
   AIF1RX1/2** – mixer/tinymix writes return OK but are replaced, while DAPM believes them. So the
   earlier "route SPKOUT to DRC1" never reached the chip; DAPM powered a DRC path that did not exist.
-- EQ/DRC/LHPF run at `FX_RATE` (reg 0xE00), which **nothing in this kernel ever sets** (no control,
-  no code) – prime suspect for the stalls when EQ3/EQ4 or DRC1 feed the speaker.
-- Next step needs our own kernel build: expose "FX Rate" (as upstream), make the SPKOUT input
-  pass-through in arizona-control (or drop the hook), then route DRC1 in mixer_paths so DAPM
-  sequences it. Script for live tests: `scripts/drc_test.sh` (refuses changes unless idle).
+- EQ/DRC/LHPF run at `FX_RATE` (reg 0xE00), never set by this kernel – but its default 0 =
+  "SYNCCLK rate" = SAMPLE_RATE_1, which hw_params sets to the AIF1 rate (48 kHz), so it should
+  match. **Not** the main suspect any more.
+- Real bug: the hook runs inside `_regmap_write()` with `mutex_unlock(&map->lock)` … `mutex_lock`
+  around it → read-modify-write not atomic (DAPM, IRQ thread, mixer writes can clobber each
+  other), plus nested writes from its callbacks (speaker-EQ bridge writes on OUT4 enable at stream
+  start) guarded only by a global `ignore_next`. Fits "stall at playback start, stuck until reset".
+- **Fixed in our kernel (2026-11-11):** `../patches/kernel/samsung/exynos5420/0001` removes the
+  hook and the sysfs interface (Deathly Adiutor sound controls no longer work). Base `73a7ba1f`
+  (`BASE` file) = what HazouPH shipped (baseline build: same decompressed size, only two driver
+  build-date strings differ). Built with `04-build.sh kernel`, packed with
+  `../build-env/boot-repack.py` into the Magisk boot image → `../artifacts/kernel-nohook/`.
+  Flashed with dd, boots (`uname -v` … `Wed Nov 11 00:23:52 CET 2026`, `dmitry@wsl-build`), Magisk OK,
+  playback 0 write errors, BT SCO config 0, dmesg "WM5102 revision C". `SPKOUTL Input 1` writes now
+  stick (None/AIF1RX1 read back).
+- Recovery if a kernel doesn't boot: Power+VolDown (force off) → VolUp+Home+Power (TWRP) → Install →
+  Install Image → `/sdcard/partbak/BOOT.img` → Boot. Backups + Odin tars in
+  `../artifacts/partbak-2026-11-10/` (README there). Odin is not installed on the PC yet.
+- Next: DRC1 in the speaker path via mixer_paths (DAPM-consistent now). Live test helper
+  `scripts/drc_test.sh` (refuses changes unless idle; its `eqsp` mode needs the old kernel).
 
 ## WM5110 control ranges (verified with tinymix on device)
 
