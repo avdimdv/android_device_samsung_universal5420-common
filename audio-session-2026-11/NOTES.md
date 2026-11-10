@@ -1,7 +1,19 @@
 # Galaxy Tab S 10.5 (chagallwifi) – audio session handoff (2026-11-08/09)
 
-Work done interactively with Claude (Cowork). This folder holds everything
-needed to continue in Claude Code. Paths below are relative to this folder.
+Work done interactively with Claude (Cowork), continued in Claude Code. This folder holds the
+findings; paths below are relative to this folder.
+
+## Status 2026-11-10 (end of Claude Code session)
+
+| Area | State |
+|---|---|
+| Build chain | WSL `~/lineage`, reproduces the shipped libbt byte-identically (`../build-env/`) |
+| Mic gain | fixed (patch 0001 for chagall-common) |
+| BT HFP/SCO calls | **fixed, audio both ways** (libbt config + patch 0002 AIF2/FLL2); volume tuning parked |
+| VoIP without BT | fixed: goes to speaker (no earpiece in audio policy) |
+| VoIP echo on speaker | gross bug fixed (working AEC config); residual echo = Telegram's AECM + JamesDSP |
+| Delivery | one Magisk module **`chagall_fixes`** (`../magisk/`, checklist in `../magisk/README.md`) |
+| Repo | local branch `audio-bt-call-fixes` (never push); Galaxy Alpha plan in worktree `D:\SOURCES\galaxy-alpha` |
 
 ## Device / environment
 
@@ -51,7 +63,7 @@ needed to continue in Claude Code. Paths below are relative to this folder.
 - `main-mic`: IN1L 24 → **30**, IN1L Digital 128 → **146** (+15 dB total); call paths +4 dB;
   invalid values clamped to 31. Speaker values left stock. Now in
   `../patches/device/samsung/chagall-common/0001-*.patch` (the ROM takes mixer_paths from chagall-common).
-- Magisk module id `chagall_mic_fix` (`../magisk/modules/`, built by `../build-env/05-make-magisk-modules.sh`). Confirmed working.
+- Delivered in Magisk module `chagall_fixes` (`../magisk/modules/`, built by `../build-env/05-make-magisk-modules.sh`). Confirmed working.
 
 ### VoIP calls (Telegram) play nothing until "Speaker" is pressed
 - Cause: `configs/audio/audio_policy_configuration.xml` in this device tree lists
@@ -60,17 +72,19 @@ needed to continue in Claude Code. Paths below are relative to this folder.
 - **Fix (verified 2026-11-09, committed):** Earpiece removed from attachedDevices, devicePorts and routes
   in `configs/audio/audio_policy_configuration.xml`. Engine falls back to
   `defaultOutputDevice` (Speaker); Telecom only offers EARPIECE if `TYPE_BUILTIN_EARPIECE` exists.
-  Magisk module id `chagall_voip_speaker`. Telegram call without BT went to `speaker` at once. Note: file is shared by all universal5420 devices.
+  In module `chagall_fixes`. Telegram call without BT went to `speaker` at once. Note: file is shared by all universal5420 devices.
 
 ### BT call gain (PARKED 2026-11-10 – redo with two people)
 - Uplink (Jabra mic → far end): `AIF1TX1/2 Input 2 Volume` (AIF3RX→ASRC2→AIF1TX), default 32 = 0 dB,
   max 48 = +16 dB. Downlink (far end → earbuds): `AIF3TX1/2 Input 1 Volume`, same range.
   Neither is set by any mixer path (init value only), so `tinymix` changes during a call stick.
-- Sweep script (scratchpad, pushed to `/data/local/tmp/gainstep.sh` + `restart.sh`): waits for
-  `ASRC2L Input = AIF3RX1`, then 30 s steps 0/6/10/14/16 dB uplink, then downlink, logs times.
-  One run done 01:11–01:16 (BT SCO stream volume at max 15/15), no verdict yet.
+- Sweep script `scripts/bt_gain_sweep.sh` (+ `scripts/bt_gain_sweep_restart.sh`): push both to
+  `/data/local/tmp/` (sweep as `gainstep.sh`), run the restart script as root; it waits for
+  `ASRC2L Input = AIF3RX1`, then 30 s steps 0/6/10/14/16 dB uplink, then downlink, logs times to
+  `/data/local/tmp/gainstep.log`. One run done 01:11–01:16 (BT SCO stream volume at max 15/15),
+  no verdict yet. Test setup: tablet+Jabra in one room, second phone with a second person.
 - When values are known: add them to `bt-sco-hs-mic` / `bt-sco-headset` as patch 0003 in
-  `patches/device/samsung/chagall-common/`, rebuild `chagall_mic_fix` v3.
+  `patches/device/samsung/chagall-common/`, bump `chagall_fixes` to v2.
 - BT recording outside calls (e.g. ASR app) cannot work: HAL starts the SCO PCMs only in
   MODE_IN_COMMUNICATION/IN_CALL (`hardware/samsung/audio/audio_hw.c`), capture times out.
 
@@ -86,10 +100,10 @@ needed to continue in Claude Code. Paths below are relative to this folder.
 - Ideas not done: keep JamesDSP off call audio (toggle in calls / separate VoIP output), or
   rebuild libaudiopreprocessing with other UUIDs so WebRTC uses it (sees post-JDSP reference
   and real delay via HAL `push_echo_reference`, same AECM algorithm).
-- On the tablet the active file is JamesDSP's copy
-  `/data/adb/modules/ainur_jamesdsp/system/vendor/etc/audio_effects.xml`, edited by hand
-  (= repo file + jdsp lines; original backed up in `/data/local/tmp/audio_effects.jdsp.orig.xml`).
-  Reinstalling JamesDSP regenerates it from `/vendor/etc` → redo the edit.
+- JamesDSP ships its own copy of `/vendor/etc/audio_effects.xml` (generated from the stock one at
+  its install). `chagall_fixes/post-fs-data.sh` rewrites both copies at every boot (repo file + jdsp
+  lines when JamesDSP is active) – no hand edit any more. Expected md5 with JamesDSP: `05cd6c98…`.
+  (Old pre-fix JamesDSP copy still backed up in `/data/local/tmp/audio_effects.jdsp.orig.xml`.)
 
 ### Bluetooth
 - **A2DP music**: does not go through the codec. `persist.bluetooth.disableabsvol=true` is already
@@ -142,7 +156,7 @@ needed to continue in Claude Code. Paths below are relative to this folder.
     Wi-Fi models → AIF3 has no clocks → silence. Same in the stock mixer file.
   - Fix (**verified 2026-11-09: BT call audio both ways**, volume low): `<ctl name="AIF2 Mode" value="Master" />` at the end of `bt-sco-hs-mic`
     (libaudioroute: direct `<ctl>` = last wins, sub-`<path>` duplicates = first wins). In
-    `../patches/device/samsung/chagall-common/0002-*.patch`; Magisk module `chagall_mic_fix` v2.
+    `../patches/device/samsung/chagall-common/0002-*.patch`; in module `chagall_fixes`.
 
 ### JamesDSP setup (current, working)
 - Module: `Magisk-Modules-Repo/ainur_jamesdsp` (MMT-Extended). Install aborted with
@@ -151,7 +165,8 @@ needed to continue in Claude Code. Paths below are relative to this folder.
   engine `JamesDSP v4.01`, `/vendor/lib/soundfx/libjamesdsp.so`, registered in audio_effects.
 - **Android rule that bit us:** AudioFlinger suspends all global (session 0) effects whenever
   any other session has an enabled effect. Culprits found and removed:
-  - LineageOS **AudioFX** (`org.lineageos.audiofx`) → `pm disable org.lineageos.audiofx`
+  - LineageOS **AudioFX** (`org.lineageos.audiofx`) → was `pm disable`; now hidden systemlessly by
+    `chagall_fixes` (`system/priv-app/AudioFX/.replace`)
   - **SmartTube** (`org.smarttube.stable`) → Player → Misc → **"Auto volume adjustment" OFF**
     (it enables LoudnessEnhancer on its session; Volume 100% alone was not enough).
 - JamesDSP ⋮ → **Reg: Global** (Conventional mode does not work with SmartTube: it never
@@ -160,24 +175,32 @@ needed to continue in Claude Code. Paths below are relative to this folder.
   160 −6, 250 −3, 2.5k/4k ≈ +1.5, rest 0; Dynamic range compander enabled, curve
   95 Hz 0, 200 +0.2→~0.4, 400–3.4k +0.55→~0.8, 7.5k +0.3→~0.5 (user tweaked last values);
   bass boost, reverb, convolver etc. off. Screenshots in `screenshots/`.
+  Saved preset "Tab S 10.5" (on tablet `/sdcard/JamesDSP/Presets/Tab S 10.5/`) exported to
+  `jamesdsp-preset/` (identical to live settings on 2026-11-10).
 - Verified via `dumpsys media.audio_flinger`: JamesDSP `Enabled y, Suspended n` during
   SmartTube playback (`logs/jdsp_check8.txt`).
 
 ## Current state of the tablet
 
-- Magisk modules: MagiskHidePropsConf, playintegrityfix, `chagall_mic_fix` (keep),
-  `ainur_jamesdsp` (keep), `chagall_bt_sco_slave` (useless – disable/remove).
-- AudioFX disabled; Deathly Adiutor speaker boost set to 0 dB (still installed).
-- SmartTube auto volume off.
+As of 2026-11-10 02:40 (Magisk 25.2):
+- Modules: **`chagall_fixes` v1** (ours, verified after reboot: libbt `e5793f73`, mixer `f0c7fdab`,
+  policy `452e5695`, effects `05cd6c98`, AudioFX hidden, BT SCO config result 0), `ainur_jamesdsp`,
+  `playintegrityfix`, `MagiskHidePropsConf` (**disabled**, was already; PIF covers it).
+  Old `chagall_bt_sco_fix` / `chagall_mic_fix` / `chagall_voip_speaker` / `chagall_bt_sco_slave` removed.
+- Deathly Adiutor speaker boost 0 dB (still installed); SmartTube auto volume off.
+- Leftover test files in `/data/local/tmp` (harmless): `gainstep.sh`, `restart.sh`, `fx.sh`,
+  `rd.sh`, `inv.sh`, `verify.sh`, `jfind.sh`, `audio_effects.*.xml`. `50i96f79`, `7037kk` are not ours (2025).
+- `adb reboot` with USB connected may end on the Samsung charging screen (LPM) → hold Power.
 
-## Suggested next steps (for Claude Code)
+## Next steps (open)
 
-1. Fold the mixer_paths mic fix + out-of-range fixes into the device repo that ships
-   `mixer_paths_0.xml` (likely the chagall/klimt device repo, not this common tree).
-2. Fix VoIP earpiece routing in `configs/audio/audio_policy_configuration.xml` (or Magisk overlay).
-3. BT SCO: inspect kernel AIF3 DAI format / clocking vs `libbt_vndcfg.txt`; explain why the
-   shipped lib has role=1 although the tree says 0.
-4. Optional: try `Speaker High Performance Switch` = 1 (quality, not loudness).
+1. **BT call gain** (parked, needs a second person) – see "BT call gain" above.
+2. **Speakerphone echo residual** – options in "Speakerphone VoIP echo" (JamesDSP off during calls,
+   or AOSP preprocessing with changed UUIDs so WebRTC uses it).
+3. BT-mic recording outside calls (ASR etc.) – needs an audio HAL change (start SCO PCMs when a
+   BT SCO input is active, not only in call modes). Optional.
+4. Optional: `Speaker High Performance Switch` = 1 (quality, not loudness).
+5. Galaxy Alpha custom ROM – separate project, `D:\SOURCES\galaxy-alpha\DEVELOPMENT-PLAN.md`.
 
 ## Handy commands (Windows cmd, outside `adb shell`)
 
@@ -194,4 +217,6 @@ adb shell "su -c 'tinymix'" > artifacts\tinymix.txt
 
 Dmitry is a developer, but not an Android one. He prefers one copy-paste command block at a time and
 explicit "run this in Windows cmd" vs "on the tablet". Output files go to `artifacts\` in this repo
-(not Downloads – changed 2026-11-09 at his request).
+(not Downloads – changed 2026-11-09 at his request). For reboots: ask once, then reboot via adb
+yourself and re-set `adb logcat -G 16M` afterwards (default buffer rolls over during calls).
+The local branches are never pushed.
