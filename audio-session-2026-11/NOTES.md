@@ -62,6 +62,18 @@ needed to continue in Claude Code. Paths below are relative to this folder.
   `defaultOutputDevice` (Speaker); Telecom only offers EARPIECE if `TYPE_BUILTIN_EARPIECE` exists.
   Magisk module id `chagall_voip_speaker`. Telegram call without BT went to `speaker` at once. Note: file is shared by all universal5420 devices.
 
+### BT call gain (PARKED 2026-11-10 – redo with two people)
+- Uplink (Jabra mic → far end): `AIF1TX1/2 Input 2 Volume` (AIF3RX→ASRC2→AIF1TX), default 32 = 0 dB,
+  max 48 = +16 dB. Downlink (far end → earbuds): `AIF3TX1/2 Input 1 Volume`, same range.
+  Neither is set by any mixer path (init value only), so `tinymix` changes during a call stick.
+- Sweep script (scratchpad, pushed to `/data/local/tmp/gainstep.sh` + `restart.sh`): waits for
+  `ASRC2L Input = AIF3RX1`, then 30 s steps 0/6/10/14/16 dB uplink, then downlink, logs times.
+  One run done 01:11–01:16 (BT SCO stream volume at max 15/15), no verdict yet.
+- When values are known: add them to `bt-sco-hs-mic` / `bt-sco-headset` as patch 0003 in
+  `patches/device/samsung/chagall-common/`, rebuild `chagall_mic_fix` v3.
+- BT recording outside calls (e.g. ASR app) cannot work: HAL starts the SCO PCMs only in
+  MODE_IN_COMMUNICATION/IN_CALL (`hardware/samsung/audio/audio_hw.c`), capture times out.
+
 ### Speakerphone VoIP echo (far end hears itself)
 - Cause (fixed 2026-11-10, `configs/audio/audio_effects.xml`): pre_processing pointed to NXP LifeVibes
   `liblvvetx.so`; it always fails (`LVVEFS_Create` error 8, capture is 48 kHz). Telegram/WebRTC
