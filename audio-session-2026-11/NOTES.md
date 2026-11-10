@@ -41,7 +41,9 @@ findings; paths below are relative to this folder.
    Listing `/proc/<pid>/fd` for `/dev/snd/pcm*` is safe.
 4. **Wolfson Control speaker EQ** (`echo 1 > /sys/class/misc/wolfson_control/switch_eq_speaker`,
    SPKOUT ← EQ3/EQ4) → speaker playback **stalls** (`out_write: I/O error`, "write blocked for
-   20–40 s"), no kernel crash; `echo 0` while idle restores it (2026-11-10).
+   20–40 s"), no kernel crash. `echo 0` while idle restores the routing but the codec **stays
+   stuck until a reboot** (2026-11-10). "Mixer dropped sample"/"ASRC underclocked" in dmesg are
+   normal background noise on this codec, also during healthy playback.
 
 ### Why DRC/EQ on the speaker fails (2026-11-10 findings)
 - The codec is a **WM5102** (kernel builds only `CONFIG_MFD_WM5102`/`SND_SOC_WM5102`; probe rejects
