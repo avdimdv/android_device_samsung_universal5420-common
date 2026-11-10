@@ -23,7 +23,7 @@ findings; paths below are relative to this folder.
 | ROM | Unofficial LineageOS 17.1 (Android 10, API 29), XDA thread 4270943 – maintainer has stopped |
 | Kernel | 3.4 (Samsung exynos5420), 32-bit ARM (armeabi-v7a), SELinux Enforcing |
 | Root | Magisk 25.2. `adb root` is disabled → use `adb shell "su -c '...'"` (shell granted in Magisk) |
-| Audio codec | Wolfson/Cirrus **WM5110** ("Florida"); ALSA DAIs show up as `wm5102-aif1/2/3` |
+| Audio codec | Wolfson/Cirrus **WM5102** (Arizona; earlier notes said WM5110 – wrong, see "Why DRC/EQ…"); ALSA DAIs `wm5102-aif1/2/3` |
 | ALSA PCMs | `00-00 Pri_Dai aif1`, `00-01 Voice aif2`, `00-02 BT Tx/Rx aif3`, `00-03 Sec_Dai aif1` |
 | Audio HAL | `audio.primary.universal5420` (`TARGET_AUDIOHAL_VARIANT := samsung`), mixer file `/vendor/etc/mixer_paths_0.xml` (`/vendor` → `/system/vendor`) |
 | BT chip | Broadcom BCM4350 on `/dev/ttySAC0`, `libbt-vendor.so` built with `SCO_USE_I2S_INTERFACE` |
@@ -39,6 +39,23 @@ findings; paths below are relative to this folder.
    watchdog panic (proven: `logs/lastcrash.txt`, process `head`).
 3. **Reading debugfs `/sys/kernel/debug/asoc/.../dapm/*`** → reboot (very likely, same session).
    Listing `/proc/<pid>/fd` for `/dev/snd/pcm*` is safe.
+4. **Wolfson Control speaker EQ** (`echo 1 > /sys/class/misc/wolfson_control/switch_eq_speaker`,
+   SPKOUT ← EQ3/EQ4) → speaker playback **stalls** (`out_write: I/O error`, "write blocked for
+   20–40 s"), no kernel crash; `echo 0` while idle restores it (2026-11-10).
+
+### Why DRC/EQ on the speaker fails (2026-11-10 findings)
+- The codec is a **WM5102** (kernel builds only `CONFIG_MFD_WM5102`/`SND_SOC_WM5102`; probe rejects
+  other IDs), not WM5110 as written above.
+- `arizona-control.c` = AndreiLux "Wolfson Control" (`/sys/class/misc/wolfson_control/`) hooks every
+  codec register write (`arizona_control_regmap_hook` in regmap.c). "Hidden"/"active" fields are
+  locked to the first value written at boot: **`SPKOUTx Input 1` (OUT4 mix input 1) is locked to
+  AIF1RX1/2** – mixer/tinymix writes return OK but are replaced, while DAPM believes them. So the
+  earlier "route SPKOUT to DRC1" never reached the chip; DAPM powered a DRC path that did not exist.
+- EQ/DRC/LHPF run at `FX_RATE` (reg 0xE00), which **nothing in this kernel ever sets** (no control,
+  no code) – prime suspect for the stalls when EQ3/EQ4 or DRC1 feed the speaker.
+- Next step needs our own kernel build: expose "FX Rate" (as upstream), make the SPKOUT input
+  pass-through in arizona-control (or drop the hook), then route DRC1 in mixer_paths so DAPM
+  sequences it. Script for live tests: `scripts/drc_test.sh` (refuses changes unless idle).
 
 ## WM5110 control ranges (verified with tinymix on device)
 
