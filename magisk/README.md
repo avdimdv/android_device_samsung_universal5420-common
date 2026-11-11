@@ -13,10 +13,10 @@ Sources for the modules built by `build-env/05-make-magisk-modules.sh` into `art
 |---|---|---|
 | BT call audio: libbt as I2S slave + SCO config sent | `system/vendor/lib/libbt-vendor.so` | `BoardConfigCommon.mk`, `bluetooth/libbt_vndcfg.txt` (built) |
 | Mic gain +15 dB, out-of-range values, BT SCO mic keeps AIF2 Master (FLL2) | `system/vendor/etc/mixer_paths_0.xml` | `patches/device/samsung/chagall-common/` 0001, 0002 |
-| Speaker hardware limiter + loudness (WM5102 DRC1, T1: +6 dB, ceiling −9 dBFS) – **only with our kernel** | same file, lines tagged `<!-- drc-speaker -->`; `post-fs-data.sh` strips them if `/sys/class/misc/wolfson_control` exists | chagall-common 0003 + `patches/kernel/samsung/exynos5420/0001` |
+| Speaker hardware EQ + limiter + loudness (WM5102: AIF1 → EQ1/2 (E1: −9/−3/0/+1/0 dB) → DRC1 (T1: +6 dB, ceiling −9 dBFS) → SPKOUT) – **only with our kernel** | same file, lines tagged `<!-- drc-speaker -->`; `post-fs-data.sh` strips them if `/sys/class/misc/wolfson_control` exists | chagall-common 0003, 0004 + `patches/kernel/samsung/exynos5420/0001` |
 | VoIP to speaker (no earpiece) | `system/vendor/etc/audio_policy_configuration.xml` | `configs/audio/audio_policy_configuration.xml` |
 | Working AEC/NS for VoIP (AOSP instead of broken LifeVibes) | `system/vendor/etc/audio_effects.xml` + `post-fs-data.sh` | `configs/audio/audio_effects.xml` |
-| AudioFX off (it suspends global effects like JamesDSP) | `system/priv-app/AudioFX/.replace` | – |
+| AudioFX hidden **while JamesDSP is active** (it suspends global effects like JamesDSP) | `post-fs-data.sh` creates/removes `system/priv-app/AudioFX/.replace` | – |
 
 `post-fs-data.sh` adds the JamesDSP library/effect to `audio_effects.xml` when the
 `ainur_jamesdsp` module is active, and writes the same content into JamesDSP's own copy of that
@@ -26,12 +26,28 @@ and nothing has to be edited by hand after (re)installing JamesDSP.
 Installing `chagall_fixes` marks the old single-purpose modules (`chagall_bt_sco_fix`,
 `chagall_mic_fix`, `chagall_voip_speaker`, `chagall_bt_sco_slave`) for removal.
 
+Installation is refused on anything but chagallwifi / Android 10 (`customize.sh`).
+
+## Package for other users – `artifactselease\`
+
+`build-env/07-make-release.sh` (in WSL, after 03-overlay) builds what can be handed out:
+
+- `chagall_fixes.zip` – the module above.
+- `chagall_kernel_nohook.zip` – `magisk/kernel-zip/` + our kernel. Flashable in TWRP or the Magisk
+  app. Swaps only the kernel inside the boot image on the tablet (ramdisk/Magisk kept), after
+  checking device and current kernel md5; backs the boot image up to `/sdcard/chagall_kernel/`,
+  verifies by read-back. `sh update-binary --repack in.img zImage out.img` is the PC self test
+  (output is byte-identical to `build-env/boot-repack.py`).
+- `chagall_kernel_stock.zip` – same installer with the ROM's kernel (undo).
+- `README.md` (from `magisk/release/`), `source/` (patches with e-mail addresses removed), `SHA256SUMS`.
+
 ## After a firmware reinstall – checklist
 
 1. Flash ROM (LineageOS 17.1 "deathly" for chagallwifi), Magisk (25.2), reboot.
 1b. **Our kernel** (Wolfson Control hook removed – needed for the speaker DRC; everything else works
    without it, the module then just skips DRC). The kernel lives in the boot image, not in the
-   module. Pull the new Magisk-patched boot image, swap in our kernel, flash it back:
+   module. Easiest: Magisk app → Install from storage → `artifactselease\chagall_kernel_nohook.zip`.
+   By hand: pull the new Magisk-patched boot image, swap in our kernel, flash it back:
    ```
    cd /d D:\SOURCES\android_device_samsung_universal5420-common
    adb shell "su -c 'dd if=/dev/block/platform/dw_mmc.0/by-name/BOOT of=/sdcard/boot-magisk.img'"

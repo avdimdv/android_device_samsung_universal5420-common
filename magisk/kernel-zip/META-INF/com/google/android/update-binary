@@ -1,0 +1,157 @@
+#!/sbin/sh
+# Kernel swap for the Galaxy Tab S 10.5 Wi-Fi (SM-T800, chagallwifi), LineageOS 17.1 "deathly".
+# Flash in TWRP (Install) or in the Magisk app (Modules -> Install from storage).
+#
+# Replaces ONLY the kernel inside the boot image that is on the tablet now; ramdisk (Magisk),
+# cmdline, addresses and the Samsung footer are kept. Before writing it
+#   - checks the device and that the kernel now in the boot image is one of the known builds,
+#   - saves the current boot image to <internal storage>/chagall_kernel/,
+#   - checks the new image fits; after writing reads it back and restores the old one on mismatch.
+#
+# Self test on a PC:  sh update-binary --repack <boot.img> <zImage> <out.img>
+umask 022
+BOOT=/dev/block/platform/dw_mmc.0/by-name/BOOT
+
+# ---------- small binary helpers (busybox / toybox / coreutils) ----------
+if   [ "$(printf A | od -An -v -tx1 2>/dev/null | tr -d ' \n')" = 41 ]; then hex() { od -An -v -tx1 | tr -d ' \n'; }
+elif [ "$(printf A | hexdump -v -e '1/1 "%02x"' 2>/dev/null)" = 41 ];   then hex() { hexdump -v -e '1/1 "%02x"'; }
+elif [ "$(printf A | xxd -p 2>/dev/null | tr -d '\n')" = 41 ];          then hex() { xxd -p | tr -d '\n'; }
+else hex() { echo; }; fi
+oct()   { printf "\\$(printf '%03o' "$1")"; }
+le32()  { oct $(($1 & 255)); oct $((($1 >> 8) & 255)); oct $((($1 >> 16) & 255)); oct $((($1 >> 24) & 255)); }
+rd32()  { _h=$(dd if="$1" bs=1 skip="$2" count=4 2>/dev/null | hex)
+          echo $((0x$(echo "$_h" | cut -c7-8)$(echo "$_h" | cut -c5-6)$(echo "$_h" | cut -c3-4)$(echo "$_h" | cut -c1-2))); }
+unhex() { _h=$1; while [ -n "$_h" ]; do oct $((0x$(echo "$_h" | cut -c1-2))); _h=$(echo "$_h" | cut -c3-); done; }
+zeros() { [ "$1" -gt 0 ] && dd if=/dev/zero bs=1 count="$1" 2>/dev/null; return 0; }
+fsize() { echo $(($(wc -c < "$1"))); }
+md5()   { md5sum "$1" | cut -c1-32; }
+# mkbootimg id: sha1(kernel, le32 size, ramdisk, le32 size, second, le32 size)
+img_id() { { cat "$1"; le32 "$(fsize "$1")"; cat "$W/rd"; le32 "$RS"; cat "$W/sec"; le32 "$SS"; } | sha1sum | cut -c1-40; }
+
+# split <boot.img> into $W/hdr k.old rd sec; sets KS RS SS PS FOOT IDOK
+split() {
+  [ "$(dd if="$1" bs=1 count=8 2>/dev/null)" = "ANDROID!" ] || { ERR="no Android boot image header"; return 1; }
+  KS=$(rd32 "$1" 8); RS=$(rd32 "$1" 16); SS=$(rd32 "$1" 24); PS=$(rd32 "$1" 36)
+  [ "$PS" = 2048 ] && [ "$(rd32 "$1" 40)" = 0 ] || { ERR="unexpected boot image layout (page $PS)"; return 1; }
+  [ "$KS" -gt 1000000 ] && [ "$KS" -lt 8388608 ] && [ "$RS" -gt 0 ] && [ "$RS" -lt 8388608 ] && [ "$SS" -lt 8388608 ] ||
+    { ERR="implausible sizes in the boot image header"; return 1; }
+  KP=$(((KS + PS - 1) / PS)); RP=$(((RS + PS - 1) / PS)); SP=$(((SS + PS - 1) / PS))
+  dd if="$1" of="$W/hdr" bs=$PS count=1 2>/dev/null
+  dd if="$1" bs=$PS skip=1 count=$KP 2>/dev/null | head -c $KS > "$W/k.old"
+  dd if="$1" bs=$PS skip=$((1 + KP)) count=$RP 2>/dev/null | head -c $RS > "$W/rd"
+  : > "$W/sec"
+  [ "$SS" -gt 0 ] && dd if="$1" bs=$PS skip=$((1 + KP + RP)) count=$SP 2>/dev/null | head -c $SS > "$W/sec"
+  [ "$(fsize "$W/k.old")" = "$KS" ] && [ "$(fsize "$W/rd")" = "$RS" ] && [ "$(fsize "$W/sec")" = "$SS" ] ||
+    { ERR="boot image is truncated"; return 1; }
+  FOOT=$(dd if="$1" bs=$PS skip=$((1 + KP + RP + SP)) count=1 2>/dev/null | head -c 16)
+  IDOK=false
+  [ "$(dd if="$1" bs=1 skip=576 count=20 2>/dev/null | hex)" = "$(img_id "$W/k.old")" ] && IDOK=true
+  return 0
+}
+
+# build <out.img> from the split parts and <zImage>
+join() {
+  NKS=$(fsize "$1")
+  le32 "$NKS" | dd of="$W/hdr" bs=1 seek=8 conv=notrunc 2>/dev/null
+  # keep the id valid if it was valid (nothing on this device checks it)
+  $IDOK && unhex "$(img_id "$1")" | dd of="$W/hdr" bs=1 seek=576 conv=notrunc 2>/dev/null
+  { cat "$W/hdr" "$1"; zeros $(((PS - NKS % PS) % PS))
+    cat "$W/rd"; zeros $(((PS - RS % PS) % PS))
+    if [ "$SS" -gt 0 ]; then cat "$W/sec"; zeros $(((PS - SS % PS) % PS)); fi
+    [ "$FOOT" = SEANDROIDENFORCE ] && printf SEANDROIDENFORCE
+  } > "$2"
+  return 0
+}
+
+if [ "$1" = --repack ]; then
+  W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
+  [ -n "$(printf A | hex)" ] || { echo "no od/hexdump/xxd"; exit 1; }
+  split "$2" || { echo "ERROR: $ERR"; exit 1; }
+  join "$3" "$4"
+  echo "$4: kernel $KS -> $NKS bytes, ramdisk $RS kept, id ok: $IDOK, footer: ${FOOT:-none}, total $(fsize "$4") bytes"
+  exit 0
+fi
+
+# ---------- installer ----------
+OUTFD=$2; ZIPFILE=$3
+BOOTMODE=false
+ps | grep zygote | grep -qv grep && BOOTMODE=true
+$BOOTMODE || ps -A 2>/dev/null | grep zygote | grep -qv grep && BOOTMODE=true
+ui_print() { if $BOOTMODE; then echo "$1"; else printf 'ui_print %s\nui_print\n' "$1" >> /proc/self/fd/$OUTFD; fi; }
+W=/dev/chagall_kernel_tmp
+die() { ui_print " "; ui_print "! $1"; ui_print "! NOTHING WAS CHANGED."; rm -rf "$W"; exit 1; }
+
+rm -rf "$W"; mkdir -p "$W" || { W=/tmp/chagall_kernel_tmp; rm -rf "$W"; mkdir -p "$W"; }
+unzip -o "$ZIPFILE" 'kernel/*' -d "$W" >/dev/null 2>&1 || die "cannot unpack the zip"
+. "$W/kernel/info"      # KNAME, KMD5, ACCEPT
+ui_print "*******************************************"
+ui_print " Tab S 10.5 Wi-Fi (SM-T800) kernel swap"
+ui_print " -> $KNAME"
+ui_print "*******************************************"
+
+[ -n "$(printf A | hex)" ] || die "this recovery has no od/hexdump/xxd"
+for t in dd head cut md5sum sha1sum wc; do command -v $t >/dev/null 2>&1 || die "this recovery has no '$t'"; done
+[ "$(md5 "$W/kernel/zImage")" = "$KMD5" ] || die "the zip is damaged (kernel checksum)"
+
+DEV=""
+for p in ro.product.device ro.build.product ro.lineage.device ro.omni.device; do
+  [ "$(getprop $p 2>/dev/null)" = chagallwifi ] && DEV=chagallwifi
+done
+[ -n "$DEV" ] || die "this is not a chagallwifi (SM-T800): device is '$(getprop ro.product.device)'"
+[ -e "$BOOT" ] || die "boot partition $BOOT not found"
+
+dd if="$BOOT" of="$W/boot.old" bs=1048576 2>/dev/null || die "cannot read the boot partition"
+PART=$(fsize "$W/boot.old")
+split "$W/boot.old" || die "boot partition: $ERR"
+CUR=$(md5 "$W/k.old")
+ui_print "- kernel now in the boot image: $CUR"
+if [ "$CUR" = "$KMD5" ]; then
+  ui_print "- this kernel is already installed, nothing to do."
+  rm -rf "$W"; exit 0
+fi
+OK=false; for m in $ACCEPT; do [ "$m" = "$CUR" ] && OK=true; done
+if ! $OK; then
+  case "$ZIPFILE" in
+    *force*) ui_print "- UNKNOWN kernel, continuing because the zip name contains 'force'" ;;
+    *) die "The kernel on this tablet is not the one this zip was made for (other ROM build?). See README.md in the zip." ;;
+  esac
+fi
+
+BK=""
+for d in /sdcard /data/media/0 /external_sd; do
+  if [ -d "$d" ] && mkdir -p "$d/chagall_kernel" 2>/dev/null && : > "$d/chagall_kernel/.w" 2>/dev/null; then
+    rm -f "$d/chagall_kernel/.w"; BK=$d/chagall_kernel; break
+  fi
+done
+[ -n "$BK" ] || die "no storage to save the boot image backup (mount Data in TWRP)"
+BKF=$BK/boot-before-$(echo "$CUR" | cut -c1-8).img
+cp "$W/boot.old" "$BKF" && [ "$(md5 "$BKF")" = "$(md5 "$W/boot.old")" ] || die "could not save the backup to $BKF"
+ui_print "- current boot image saved: $BKF"
+
+join "$W/kernel/zImage" "$W/boot.new"
+NEW=$(fsize "$W/boot.new")
+[ "$NEW" -le "$PART" ] || die "new boot image ($NEW bytes) does not fit the partition ($PART)"
+# re-read what was built: it must parse and contain exactly the new kernel and the old ramdisk
+RDMD5=$(md5 "$W/rd")
+split "$W/boot.new" || die "self check failed: $ERR"
+[ "$(md5 "$W/k.old")" = "$KMD5" ] && [ "$(md5 "$W/rd")" = "$RDMD5" ] || die "self check failed (content)"
+NMD5=$(md5 "$W/boot.new")
+
+ui_print "- writing the boot image ($NEW bytes)"
+dd if="$W/boot.new" of="$BOOT" bs=1048576 2>/dev/null; sync
+BACK=$(dd if="$BOOT" bs=1048576 2>/dev/null | head -c "$NEW" | md5sum | cut -c1-32)
+if [ "$BACK" != "$NMD5" ]; then
+  ui_print "! read-back mismatch, restoring the previous boot image"
+  dd if="$W/boot.old" of="$BOOT" bs=1048576 2>/dev/null; sync
+  if [ "$(dd if="$BOOT" bs=1048576 2>/dev/null | md5sum | cut -c1-32)" = "$(md5 "$W/boot.old")" ]; then
+    die "write failed; the previous boot image was restored."
+  fi
+  ui_print "! RESTORE FAILED TOO. Do not reboot. In TWRP: Install -> Install Image ->"
+  ui_print "! $BKF -> Boot"
+  rm -rf "$W"; exit 1
+fi
+rm -rf "$W"
+ui_print "- verified. Kernel installed: $KNAME"
+ui_print "- Magisk and everything else in the boot image were kept."
+ui_print "- Reboot now."
+exit 0

@@ -1,0 +1,63 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: avdim <avdimdv@gmail.com>
+Date: Thu, 12 Nov 2026 00:25:01 +0100
+Subject: [PATCH] chagall-common: audio: Hardware EQ (bass cut) in front of the
+ speaker DRC1
+
+Route AIF1 through EQ1/EQ2 before DRC1: -9 dB low shelf, -3 dB at
+300 Hz, +1 dB at 2.4 kHz. The tablet's speakers cannot reproduce the
+low band; removing it keeps the limiter from pumping on bass that is
+never heard and replaces the software EQ JamesDSP used to do.
+
+Same constraints as the DRC1 lines: top level, set once at HAL start,
+tagged "drc-speaker", needs a kernel without the Wolfson Control hook.
+
+Verified live on SM-T800 with the patched kernel (no write errors).
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Change-Id: I203cb3fac6136f3240774c4b19dbe66d96b03e92
+---
+ configs/audio/mixer_paths_0.xml | 20 +++++++++++++++++---
+ 1 file changed, 17 insertions(+), 3 deletions(-)
+
+diff --git a/configs/audio/mixer_paths_0.xml b/configs/audio/mixer_paths_0.xml
+index 1f99ed5..452b5c1 100644
+--- a/configs/audio/mixer_paths_0.xml
++++ b/configs/audio/mixer_paths_0.xml
+@@ -108,7 +108,7 @@
+     <ctl name="3rd Mic Switch" value="0" />
+     <ctl name="Headset Mic Switch" value="0" />
+ 
+-    <!-- MOD: hardware limiter + loudness on the speaker (WM5102 DRC1 between AIF1 and SPKOUT).
++    <!-- MOD: hardware EQ + limiter + loudness on the speaker (WM5102: AIF1 -> EQ1/2 -> DRC1 -> SPKOUT).
+          Needs a kernel without the Wolfson Control regmap hook (universal5420-common
+          patches/kernel/samsung/exynos5420/0001): on the stock kernel the SPKOUT input write is
+          silently replaced while DAPM believes it (playback freeze). Lines tagged drc-speaker are
+@@ -126,8 +126,22 @@
+     <ctl name="DRC1" id="7" value="8C" /> <!-- drc-speaker -->
+     <ctl name="DRC1" id="8" value="00" /> <!-- drc-speaker -->
+     <ctl name="DRC1" id="9" value="00" /> <!-- drc-speaker -->
+-    <ctl name="DRC1L Input 1" value="AIF1RX1" /> <!-- drc-speaker -->
+-    <ctl name="DRC1R Input 1" value="AIF1RX2" /> <!-- drc-speaker -->
++    <!-- EQ1/EQ2 in front of DRC1 (E1): bass cut for the tiny speakers, chip default bands
++         ~100 Hz shelf / 300 / 875 / 2.4k / 6.9 kHz shelf = -9 -3 0 +1 0 dB (12 = 0 dB, 1 dB/step) -->
++    <ctl name="EQ1 B1 Volume" value="3" /> <!-- drc-speaker -->
++    <ctl name="EQ1 B2 Volume" value="9" /> <!-- drc-speaker -->
++    <ctl name="EQ1 B3 Volume" value="12" /> <!-- drc-speaker -->
++    <ctl name="EQ1 B4 Volume" value="13" /> <!-- drc-speaker -->
++    <ctl name="EQ1 B5 Volume" value="12" /> <!-- drc-speaker -->
++    <ctl name="EQ2 B1 Volume" value="3" /> <!-- drc-speaker -->
++    <ctl name="EQ2 B2 Volume" value="9" /> <!-- drc-speaker -->
++    <ctl name="EQ2 B3 Volume" value="12" /> <!-- drc-speaker -->
++    <ctl name="EQ2 B4 Volume" value="13" /> <!-- drc-speaker -->
++    <ctl name="EQ2 B5 Volume" value="12" /> <!-- drc-speaker -->
++    <ctl name="EQ1 Input 1" value="AIF1RX1" /> <!-- drc-speaker -->
++    <ctl name="EQ2 Input 1" value="AIF1RX2" /> <!-- drc-speaker -->
++    <ctl name="DRC1L Input 1" value="EQ1" /> <!-- drc-speaker -->
++    <ctl name="DRC1R Input 1" value="EQ2" /> <!-- drc-speaker -->
+     <ctl name="SPKOUTL Input 1" value="DRC1L" /> <!-- drc-speaker -->
+     <ctl name="SPKOUTR Input 1" value="DRC1R" /> <!-- drc-speaker -->
+ 
+-- 
+2.25.1
+

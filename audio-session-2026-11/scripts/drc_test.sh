@@ -34,6 +34,24 @@ drc)
   else echo "usage: drc on|off"; exit 1; fi
   mark "drc $2"; sh $0 state
   ;;
+eq)
+  # hardware EQ in front of DRC1: AIF1RX1/2 -> EQ1/EQ2 -> DRC1L/R (needs "drc on")
+  # gains 0..24, 12 = 0 dB; bands ~100 Hz shelf / 300 / 875 / 2.4k / 6.9 kHz shelf (chip defaults)
+  need_idle
+  if [ "$2" = on ]; then
+    shift 2; set -- ${*:-3 9 12 13 12}      # E1: -9 -3 0 +1 0 dB
+    for e in EQ1 EQ2; do
+      b=1; for g in "$@"; do tinymix "$e B$b Volume" $g; b=$((b+1)); done
+    done
+    tinymix "EQ1 Input 1" AIF1RX1;  tinymix "EQ2 Input 1" AIF1RX2
+    tinymix "DRC1L Input 1" EQ1;    tinymix "DRC1R Input 1" EQ2
+  elif [ "$2" = off ]; then
+    tinymix "DRC1L Input 1" AIF1RX1; tinymix "DRC1R Input 1" AIF1RX2
+    tinymix "EQ1 Input 1" None;      tinymix "EQ2 Input 1" None
+  else echo "usage: eq on [g1 g2 g3 g4 g5] | eq off"; exit 1; fi
+  mark "eq $*"; sh $0 state
+  for e in EQ1 EQ2; do echo "$e gains: $(for b in 1 2 3 4 5; do tinymix "$e B$b Volume" | sed 's/.*: //'; done | tr '\n' ' ')  input: $(sel "$e Input 1")"; done
+  ;;
 cfg)
   # DRC1_CTRL1..5 as 10 bytes (big-endian per register), ENA bits are masked by the control.
   #   default : 00 18 09 33 00 18 00 00 00 00   (QR+anticlip, 1:1 below/1:8 above a 0 dB knee)

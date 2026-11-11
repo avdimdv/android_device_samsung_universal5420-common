@@ -1,6 +1,6 @@
 id=chagall_fixes
 name=Tab S 10.5 (SM-T800) audio + BT fixes
-version=v2
-versionCode=2
+version=v3
+versionCode=3
 author=Dmitry
-description=BT call audio (libbt I2S slave + SCO config), mic gain + BT SCO clock, speaker hardware limiter/loudness (DRC1, only with the hook-free kernel), VoIP to speaker (no earpiece), working AEC/NS config (+JamesDSP entry if installed), AudioFX hidden.
+description=Galaxy Tab S 10.5 Wi-Fi, LineageOS 17.1 deathly: Bluetooth call audio, mic gain, VoIP to the speaker (no earpiece), working echo canceller config; speaker hardware EQ + limiter/loudness (WM5102, only with the hook-free kernel zip).

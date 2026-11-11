@@ -12,7 +12,7 @@ findings; paths below are relative to this folder.
 | BT HFP/SCO calls | **fixed, audio both ways** (libbt config + patch 0002 AIF2/FLL2); volume tuning parked |
 | VoIP without BT | fixed: goes to speaker (no earpiece in audio policy) |
 | VoIP echo on speaker | gross bug fixed (working AEC config); residual echo = Telegram's AECM + JamesDSP |
-| Speaker | **hardware limiter + loudness (WM5102 DRC1, +6 dB, no clipping)** – needs our kernel (Wolfson hook removed); JamesDSP off |
+| Speaker | **hardware EQ (bass cut) + limiter + loudness (WM5102 EQ1/2 → DRC1, +6 dB, no clipping)** – needs our kernel (Wolfson hook removed); JamesDSP off. Shareable package: `artifactselease\` (`magisk/README.md`) |
 | Delivery | Magisk module **`chagall_fixes` v2** + our kernel in the boot image (`../magisk/README.md`) |
 | Repo | local branch `audio-bt-call-fixes` (never push); Galaxy Alpha plan in worktree `D:\SOURCES\galaxy-alpha` |
 
@@ -89,7 +89,11 @@ findings; paths below are relative to this folder.
   in the top-level init section) + `chagall_fixes` v2, whose `post-fs-data.sh` strips the tagged
   lines while `/sys/class/misc/wolfson_control` exists (stock kernel). Verified after reboot:
   SPKOUT = DRC1L/R, DRC1 = T1, playback 0 write errors. JamesDSP switched off by the user.
-- Optional later: hardware EQ (EQ1–4) in front of DRC1 for the bass cut JamesDSP used to do;
+- **Hardware EQ E1 (2026-11-11 live, 2026-11-12 permanent in chagall-common 0004 / chagall_fixes v3):**
+  `EQ1/EQ2 Input 1 = AIF1RX1/2`, `DRC1L/R Input 1 = EQ1/EQ2`, band volumes `3 9 12 13 12`
+  (−9/−3/0/+1/0 dB; 12 = 0 dB; chip default bands ~100 Hz shelf/300/875/2.4k/6.9k shelf – assumed,
+  not measured). Live test: 0 write errors, user: sounds OK. `scripts/drc_test.sh eq on|off`.
+- Was optional: hardware EQ (EQ1–4) in front of DRC1 for the bass cut JamesDSP used to do;
   tune T1 (e.g. +9 dB = knee −18 → −9 dB, CTRL4 0x02CC) if the maximum is not loud enough.
 
 ## WM5110 control ranges (verified with tinymix on device)
