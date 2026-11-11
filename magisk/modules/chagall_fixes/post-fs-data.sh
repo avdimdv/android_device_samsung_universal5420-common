@@ -22,3 +22,17 @@ fi
 cat "$TMP" > "$OUT"
 [ -f "$J/system/vendor/etc/audio_effects.xml" ] && cat "$TMP" > "$J/system/vendor/etc/audio_effects.xml"
 rm -f "$TMP"
+
+# mixer_paths_0.xml: the speaker DRC1 lines (tagged <!-- drc-speaker -->) need a kernel without the
+# Wolfson Control regmap hook. On a kernel that still has it (/sys/class/misc/wolfson_control
+# exists, e.g. after reflashing the stock boot image) they would recreate the DAPM/hardware
+# mismatch that froze playback, so strip them there.
+MB=$MODDIR/mixer_paths_0.base.xml
+MO=$MODDIR/system/vendor/etc/mixer_paths_0.xml
+if [ -e /sys/class/misc/wolfson_control ]; then
+  grep -v -F '<!-- drc-speaker -->' "$MB" > "$TMP"
+else
+  cp "$MB" "$TMP"
+fi
+cat "$TMP" > "$MO"
+rm -f "$TMP"

@@ -1,0 +1,65 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: avdim <avdimdv@gmail.com>
+Date: Wed, 11 Nov 2026 01:40:23 +0100
+Subject: [PATCH] chagall-common: audio: Hardware limiter + loudness on the
+ speaker (DRC1)
+
+Route AIF1 through the WM5102 DRC1 before SPKOUT. Configure it as a
+limiter with +6 dB of make-up below a -15 dB knee and a hard ceiling at
+-9 dBFS. The speaker path then gets louder without clipping the +8.5 dB
+digital gain that follows.
+
+The lines are set once at audio HAL start, at top level, and no path
+touches them, so DAPM powers DRC1 together with the speaker path.
+
+This requires a kernel without the Wolfson Control regmap hook. With the
+stock kernel the SPKOUT input write is silently replaced while DAPM
+believes it, and playback freezes. Every line is tagged "drc-speaker" so
+that it can be stripped on such kernels.
+
+Verified on SM-T800 with the patched kernel: stable over stream
+start/stop and reboot, volume steps work, no distortion at full volume.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Change-Id: I46c1005fe1869ceb11e0a2c321ac2c890309fd1c
+---
+ configs/audio/mixer_paths_0.xml | 23 +++++++++++++++++++++++
+ 1 file changed, 23 insertions(+)
+
+diff --git a/configs/audio/mixer_paths_0.xml b/configs/audio/mixer_paths_0.xml
+index 96de205..1f99ed5 100644
+--- a/configs/audio/mixer_paths_0.xml
++++ b/configs/audio/mixer_paths_0.xml
+@@ -108,6 +108,29 @@
+     <ctl name="3rd Mic Switch" value="0" />
+     <ctl name="Headset Mic Switch" value="0" />
+ 
++    <!-- MOD: hardware limiter + loudness on the speaker (WM5102 DRC1 between AIF1 and SPKOUT).
++         Needs a kernel without the Wolfson Control regmap hook (universal5420-common
++         patches/kernel/samsung/exynos5420/0001): on the stock kernel the SPKOUT input write is
++         silently replaced while DAPM believes it (playback freeze). Lines tagged drc-speaker are
++         stripped by the chagall_fixes Magisk module on other kernels.
++         T1: DRC1_CTRL1..5 = 0018 0933 0028 028C 0000 (bytes, hex): QR + anticlip, knee
++         -15 dB in -> -9 dB out (+6 dB below the knee), hard limit above it (-9 dBFS before the
++         speaker's +8.5 dB digital gain). Set once at HAL start; no path touches these. -->
++    <ctl name="DRC1" id="0" value="00" /> <!-- drc-speaker -->
++    <ctl name="DRC1" id="1" value="18" /> <!-- drc-speaker -->
++    <ctl name="DRC1" id="2" value="09" /> <!-- drc-speaker -->
++    <ctl name="DRC1" id="3" value="33" /> <!-- drc-speaker -->
++    <ctl name="DRC1" id="4" value="00" /> <!-- drc-speaker -->
++    <ctl name="DRC1" id="5" value="28" /> <!-- drc-speaker -->
++    <ctl name="DRC1" id="6" value="02" /> <!-- drc-speaker -->
++    <ctl name="DRC1" id="7" value="8C" /> <!-- drc-speaker -->
++    <ctl name="DRC1" id="8" value="00" /> <!-- drc-speaker -->
++    <ctl name="DRC1" id="9" value="00" /> <!-- drc-speaker -->
++    <ctl name="DRC1L Input 1" value="AIF1RX1" /> <!-- drc-speaker -->
++    <ctl name="DRC1R Input 1" value="AIF1RX2" /> <!-- drc-speaker -->
++    <ctl name="SPKOUTL Input 1" value="DRC1L" /> <!-- drc-speaker -->
++    <ctl name="SPKOUTR Input 1" value="DRC1R" /> <!-- drc-speaker -->
++
+     <!--
+     #######################################################
+     ### STOCK AUDIO PATHS
+-- 
+2.25.1
+
