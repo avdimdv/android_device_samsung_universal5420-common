@@ -12,7 +12,8 @@ Sources for the modules built by `build-env/05-make-magisk-modules.sh` into `art
 | Fix | Module content | Source of truth |
 |---|---|---|
 | BT call audio: libbt as I2S slave + SCO config sent | `system/vendor/lib/libbt-vendor.so` | `BoardConfigCommon.mk`, `bluetooth/libbt_vndcfg.txt` (built) |
-| Mic gain +15 dB, out-of-range values, BT SCO mic keeps AIF2 Master (FLL2) | `system/vendor/etc/mixer_paths_0.xml` | `patches/device/samsung/chagall-common/` |
+| Mic gain +15 dB, out-of-range values, BT SCO mic keeps AIF2 Master (FLL2) | `system/vendor/etc/mixer_paths_0.xml` | `patches/device/samsung/chagall-common/` 0001, 0002 |
+| Speaker hardware limiter + loudness (WM5102 DRC1, T1: +6 dB, ceiling −9 dBFS) – **only with our kernel** | same file, lines tagged `<!-- drc-speaker -->`; `post-fs-data.sh` strips them if `/sys/class/misc/wolfson_control` exists | chagall-common 0003 + `patches/kernel/samsung/exynos5420/0001` |
 | VoIP to speaker (no earpiece) | `system/vendor/etc/audio_policy_configuration.xml` | `configs/audio/audio_policy_configuration.xml` |
 | Working AEC/NS for VoIP (AOSP instead of broken LifeVibes) | `system/vendor/etc/audio_effects.xml` + `post-fs-data.sh` | `configs/audio/audio_effects.xml` |
 | AudioFX off (it suspends global effects like JamesDSP) | `system/priv-app/AudioFX/.replace` | – |
@@ -28,6 +29,19 @@ Installing `chagall_fixes` marks the old single-purpose modules (`chagall_bt_sco
 ## After a firmware reinstall – checklist
 
 1. Flash ROM (LineageOS 17.1 "deathly" for chagallwifi), Magisk (25.2), reboot.
+1b. **Our kernel** (Wolfson Control hook removed – needed for the speaker DRC; everything else works
+   without it, the module then just skips DRC). The kernel lives in the boot image, not in the
+   module. Pull the new Magisk-patched boot image, swap in our kernel, flash it back:
+   ```
+   cd /d D:\SOURCES\android_device_samsung_universal5420-common
+   adb shell "su -c 'dd if=/dev/block/platform/dw_mmc.0/by-name/BOOT of=/sdcard/boot-magisk.img'"
+   adb pull /sdcard/boot-magisk.img artifacts\
+   wsl -d Ubuntu -- python3 build-env/boot-repack.py artifacts/boot-magisk.img artifacts/kernel-nohook/zImage artifacts/boot-nohook-new.img
+   adb push artifacts\boot-nohook-new.img /sdcard/
+   adb shell "su -c 'dd if=/sdcard/boot-nohook-new.img of=/dev/block/platform/dw_mmc.0/by-name/BOOT'"
+   ```
+   then reboot; `adb shell uname -v` must show the `Wed Nov 11 00:23:52 CET 2026` build (or newer).
+   (Or ask Claude: the same steps with checksum verification were used on 2026-11-11.)
 2. Magisk modules (Install from storage), then reboot once at the end:
    - `chagall_fixes` (this repo, `artifacts\chagall_fixes.zip`)
    - `ainur_jamesdsp` (Magisk-Modules-Repo) – installer needs
@@ -35,7 +49,9 @@ Installing `chagall_fixes` marks the old single-purpose modules (`chagall_bt_sco
      detected; patch hard-selects the Original UI)
    - MagiskHidePropsConf, playintegrityfix (third party, as before)
 3. App settings (live in app data, no module can set them):
-   - JamesDSP: ⋮ → **Reg: Global**; then restore the saved preset (limiter −9 dB, EQ, compander):
+   - JamesDSP: since the hardware DRC (2026-11-11) JamesDSP is **switched off** and not needed for
+     speaker protection. If you want it back (e.g. for its EQ): ⋮ → **Reg: Global**; then restore
+     the saved preset (limiter −9 dB, EQ, compander):
      ```
      cd /d D:\SOURCES\android_device_samsung_universal5420-common
      adb push "audio-session-2026-11\jamesdsp-preset\Tab S 10.5" "/sdcard/JamesDSP/Presets/"

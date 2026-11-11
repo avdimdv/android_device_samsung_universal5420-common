@@ -12,7 +12,8 @@ findings; paths below are relative to this folder.
 | BT HFP/SCO calls | **fixed, audio both ways** (libbt config + patch 0002 AIF2/FLL2); volume tuning parked |
 | VoIP without BT | fixed: goes to speaker (no earpiece in audio policy) |
 | VoIP echo on speaker | gross bug fixed (working AEC config); residual echo = Telegram's AECM + JamesDSP |
-| Delivery | one Magisk module **`chagall_fixes`** (`../magisk/`, checklist in `../magisk/README.md`) |
+| Speaker | **hardware limiter + loudness (WM5102 DRC1, +6 dB, no clipping)** – needs our kernel (Wolfson hook removed); JamesDSP off |
+| Delivery | Magisk module **`chagall_fixes` v2** + our kernel in the boot image (`../magisk/README.md`) |
 | Repo | local branch `audio-bt-call-fixes` (never push); Galaxy Alpha plan in worktree `D:\SOURCES\galaxy-alpha` |
 
 ## Device / environment
@@ -83,9 +84,13 @@ findings; paths below are relative to this folder.
     distortion, 0 write errors. User happy with it.
   - The named `DRC1_*` enum controls always read back index 0 (don't trust them); use the `DRC1`
     bytes control (10 bytes = CTRL1..5 big-endian, ENA bits masked; tinymix wants decimal values).
-- Open: reboot test with DRC routed (old "reboot hang"), then make it permanent in `chagall_fixes`
-  – **only when our kernel runs** (with the stock kernel the SPKOUT write is replaced → DAPM/HW
-  mismatch = the old freeze). Optional: hardware EQ (EQ1–4) for the bass cut JamesDSP used to do.
+- Reboot with DRC1 routed: clean (64 s, last_kmsg "No errors detected") – the old reboot hang is gone.
+- **Permanent since 2026-11-11:** chagall-common patch 0003 (14 lines tagged `<!-- drc-speaker -->`
+  in the top-level init section) + `chagall_fixes` v2, whose `post-fs-data.sh` strips the tagged
+  lines while `/sys/class/misc/wolfson_control` exists (stock kernel). Verified after reboot:
+  SPKOUT = DRC1L/R, DRC1 = T1, playback 0 write errors. JamesDSP switched off by the user.
+- Optional later: hardware EQ (EQ1–4) in front of DRC1 for the bass cut JamesDSP used to do;
+  tune T1 (e.g. +9 dB = knee −18 → −9 dB, CTRL4 0x02CC) if the maximum is not loud enough.
 
 ## WM5110 control ranges (verified with tinymix on device)
 
