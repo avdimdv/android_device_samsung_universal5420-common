@@ -28,7 +28,7 @@ Installing `chagall_fixes` marks the old single-purpose modules (`chagall_bt_sco
 
 Installation is refused on anything but chagallwifi / Android 10 (`customize.sh`).
 
-## Package for other users – `artifactselease\`
+## Package for other users – `artifacts\release\`
 
 `build-env/07-make-release.sh` (in WSL, after 03-overlay) builds what can be handed out:
 
@@ -46,7 +46,7 @@ Installation is refused on anything but chagallwifi / Android 10 (`customize.sh`
 1. Flash ROM (LineageOS 17.1 "deathly" for chagallwifi), Magisk (25.2), reboot.
 1b. **Our kernel** (Wolfson Control hook removed – needed for the speaker DRC; everything else works
    without it, the module then just skips DRC). The kernel lives in the boot image, not in the
-   module. Easiest: Magisk app → Install from storage → `artifactselease\chagall_kernel_nohook.zip`.
+   module. Easiest: Magisk app → Install from storage → `artifacts\release\chagall_kernel_nohook.zip`.
    By hand: pull the new Magisk-patched boot image, swap in our kernel, flash it back:
    ```
    cd /d D:\SOURCES\android_device_samsung_universal5420-common

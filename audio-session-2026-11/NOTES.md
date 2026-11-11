@@ -12,7 +12,7 @@ findings; paths below are relative to this folder.
 | BT HFP/SCO calls | **fixed, audio both ways** (libbt config + patch 0002 AIF2/FLL2); volume tuning parked |
 | VoIP without BT | fixed: goes to speaker (no earpiece in audio policy) |
 | VoIP echo on speaker | gross bug fixed (working AEC config); residual echo = Telegram's AECM + JamesDSP |
-| Speaker | **hardware EQ (bass cut) + limiter + loudness (WM5102 EQ1/2 → DRC1, +6 dB, no clipping)** – needs our kernel (Wolfson hook removed); JamesDSP off. Shareable package: `artifactselease\` (`magisk/README.md`) |
+| Speaker | **hardware EQ (bass cut) + limiter + loudness (WM5102 EQ1/2 → DRC1, +6 dB, no clipping)** – needs our kernel (Wolfson hook removed); JamesDSP off. Shareable package: `artifacts\release\` (`magisk/README.md`) |
 | Delivery | Magisk module **`chagall_fixes` v2** + our kernel in the boot image (`../magisk/README.md`) |
 | Repo | local branch `audio-bt-call-fixes` (never push); Galaxy Alpha plan in worktree `D:\SOURCES\galaxy-alpha` |
 
