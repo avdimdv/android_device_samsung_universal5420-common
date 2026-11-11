@@ -71,8 +71,21 @@ findings; paths below are relative to this folder.
 - Recovery if a kernel doesn't boot: Power+VolDown (force off) → VolUp+Home+Power (TWRP) → Install →
   Install Image → `/sdcard/partbak/BOOT.img` → Boot. Backups + Odin tars in
   `../artifacts/partbak-2026-11-10/` (README there). Odin is not installed on the PC yet.
-- Next: DRC1 in the speaker path via mixer_paths (DAPM-consistent now). Live test helper
-  `scripts/drc_test.sh` (refuses changes unless idle; its `eqsp` mode needs the old kernel).
+- **DRC1 on the speaker works with our kernel (2026-11-11, live via `scripts/drc_test.sh`):**
+  - D1: `DRC1L/R Input 1 = AIF1RX1/2`, `SPKOUTL/R Input 1 = DRC1L/R`, chip defaults → stable over
+    stream start/stop, 0 write errors (DAPM powers DRC1 with the path).
+  - D2 (`00 18 09 33 00 28 05 10 00 00`: knee −30→−12 dB, limit) → much louder, but the volume keys
+    did "nothing" (top ~25 dB of the volume range squashed) – too aggressive.
+  - **T1 (`00 18 09 33 00 28 02 8C 00 00`)**: DRC1_CTRL1 0x0018 (QR + anticlip), CTRL2 0x0933 (default
+    attack/decay, min −36/max +36 dB), CTRL3 0x0028 (HI_COMP 0x = limit, LO_COMP 1x), CTRL4 0x028C
+    (KNEE_IP −15 dB, KNEE_OP −9 dB → +6 dB below the knee, hard ceiling −9 dBFS → after the speaker's
+    +8.5 dB ≈ −0.5 dBFS). With **JamesDSP off**: volume steps work, loud playback clean, no
+    distortion, 0 write errors. User happy with it.
+  - The named `DRC1_*` enum controls always read back index 0 (don't trust them); use the `DRC1`
+    bytes control (10 bytes = CTRL1..5 big-endian, ENA bits masked; tinymix wants decimal values).
+- Open: reboot test with DRC routed (old "reboot hang"), then make it permanent in `chagall_fixes`
+  – **only when our kernel runs** (with the stock kernel the SPKOUT write is replaced → DAPM/HW
+  mismatch = the old freeze). Optional: hardware EQ (EQ1–4) for the bass cut JamesDSP used to do.
 
 ## WM5110 control ranges (verified with tinymix on device)
 
