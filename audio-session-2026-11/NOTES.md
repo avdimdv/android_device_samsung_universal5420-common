@@ -93,6 +93,11 @@ findings; paths below are relative to this folder.
   `EQ1/EQ2 Input 1 = AIF1RX1/2`, `DRC1L/R Input 1 = EQ1/EQ2`, band volumes `3 9 12 13 12`
   (−9/−3/0/+1/0 dB; 12 = 0 dB; chip default bands ~100 Hz shelf/300/875/2.4k/6.9k shelf – assumed,
   not measured). Live test: 0 write errors, user: sounds OK. `scripts/drc_test.sh eq on|off`.
+- **2026-11-12 23:20 verified on the tablet after reboot:** chagall_fixes v3 active, EQ1/EQ2 routed with
+  gains 3 9 12 13 12, DRC1 = T1, 0 write errors, no codec errors, clean shutdown log. Kernel zip
+  (as Magisk marker module `chagall_kernel_nohook`) installed from the Magisk app: detected the
+  kernel as already installed; on-device repack of the live boot image is byte-identical to the
+  partition. Not exercised: a real kernel swap through the zip, and the TWRP path.
 - Was optional: hardware EQ (EQ1–4) in front of DRC1 for the bass cut JamesDSP used to do;
   tune T1 (e.g. +9 dB = knee −18 → −9 dB, CTRL4 0x02CC) if the maximum is not loud enough.
 

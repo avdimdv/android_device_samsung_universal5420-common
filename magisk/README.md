@@ -33,10 +33,11 @@ Installation is refused on anything but chagallwifi / Android 10 (`customize.sh`
 `build-env/07-make-release.sh` (in WSL, after 03-overlay) builds what can be handed out:
 
 - `chagall_fixes.zip` – the module above.
-- `chagall_kernel_nohook.zip` – `magisk/kernel-zip/` + our kernel. Flashable in TWRP or the Magisk
-  app. Swaps only the kernel inside the boot image on the tablet (ramdisk/Magisk kept), after
+- `chagall_kernel_nohook.zip` – `magisk/kernel-zip/` + our kernel. The Magisk app installs every zip
+  as a module (it never runs the zip's update-binary), so the zip is a tiny marker module whose
+  `customize.sh` calls `kernel/swap.sh`; in TWRP `update-binary` calls the same script. Swaps only the kernel inside the boot image on the tablet (ramdisk/Magisk kept), after
   checking device and current kernel md5; backs the boot image up to `/sdcard/chagall_kernel/`,
-  verifies by read-back. `sh update-binary --repack in.img zImage out.img` is the PC self test
+  verifies by read-back. `sh kernel/swap.sh --repack in.img zImage out.img` is the PC self test
   (output is byte-identical to `build-env/boot-repack.py`).
 - `chagall_kernel_stock.zip` – same installer with the ROM's kernel (undo).
 - `README.md` (from `magisk/release/`), `source/` (patches with e-mail addresses removed), `SHA256SUMS`.

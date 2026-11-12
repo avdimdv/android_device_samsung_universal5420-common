@@ -33,19 +33,23 @@ ART=$REL bash "$REPO/build-env/05-make-magisk-modules.sh" chagall_fixes
 (cd "$REL" && zip -q chagall_fixes.zip README.md)
 
 # --- kernel zips
-kzip() {  # <zip name> <zImage> <md5> <description>
+kzip() {  # <zip name> <zImage> <md5> <description> <short name>
   local W; W=$(mktemp -d)
   cp -r "$REPO/magisk/kernel-zip/." "$W/"
   mkdir -p "$W/kernel"; cp "$2" "$W/kernel/zImage"
   printf 'KNAME="%s"\nKMD5=%s\nACCEPT="%s %s"\n' "$4" "$3" "$STOCK_MD5" "$OURS_MD5" > "$W/kernel/info"
   cp "$REL/README.md" "$W/"; cp -r "$REL/source" "$W/"
   chmod 0755 "$W/META-INF/com/google/android/update-binary"
-  sh -n "$W/META-INF/com/google/android/update-binary"
+  # module.prop: the Magisk app installs every zip as a module (customize.sh does the swap)
+  { echo "id=${1%.zip}"; echo "name=Tab S 10.5 (SM-T800) kernel: $5"; echo "version=v1"; echo "versionCode=1"; echo "author=Dmitry"
+    echo "description=Marker only. Installing this zip swapped the kernel inside the boot image ($4). Removing the module does NOT change the kernel; install the other kernel zip for that."
+  } > "$W/module.prop"
+  sh -n "$W/META-INF/com/google/android/update-binary"; sh -n "$W/kernel/swap.sh"; sh -n "$W/customize.sh"
   rm -f "$REL/$1"; (cd "$W" && zip -qr "$REL/$1" .); rm -rf "$W"
   echo "$1: kernel $3"
 }
-kzip chagall_kernel_nohook.zip "$OURS"  "$OURS_MD5"  "hook-free kernel (73a7ba1f + Wolfson Control hook removed)"
-kzip chagall_kernel_stock.zip  "$STOCK" "$STOCK_MD5" "ROM's original kernel (73a7ba1f)"
+kzip chagall_kernel_nohook.zip "$OURS"  "$OURS_MD5"  "hook-free kernel (73a7ba1f + Wolfson Control hook removed)" "hook-free"
+kzip chagall_kernel_stock.zip  "$STOCK" "$STOCK_MD5" "ROM's original kernel (73a7ba1f)" "stock"
 
 (cd "$REL" && sha256sum *.zip > SHA256SUMS && cat SHA256SUMS)
 if grep -rIl -E '[A-Za-z0-9._-]+@[A-Za-z0-9-]+\.[a-z]{2,}' "$REL/source" "$REL/README.md" | grep -v noreply; then

@@ -1,7 +1,8 @@
 # Galaxy Tab S 10.5 Wi-Fi (SM-T800) – audio and Bluetooth call fixes
 
 For **chagallwifi** on **LineageOS 17.1 "deathly"** (HazouPH's unofficial build, Android 10) with
-**Magisk** (tested with 25.2). Tested on one tablet only. Use at your own risk.
+**Magisk** (tested with 25.2). Tested on one tablet only (module and kernel zip installed from the
+Magisk app; the TWRP path of the kernel zip is untested). Use at your own risk.
 
 | File | What it is | Needed? |
 |---|---|---|
@@ -33,7 +34,8 @@ in Magisk and everything is stock again.
 1. Magisk app → Modules → **Install from storage** → `chagall_fixes.zip` → Reboot.
 2. Optional, for the speaker EQ + limiter: Magisk app → Modules → Install from storage →
    `chagall_kernel_nohook.zip` → Reboot. (It also installs from TWRP → Install.)
-   It is not a module and will not appear in the module list.
+   A small entry "Tab S 10.5 (SM-T800) kernel: hook-free" stays in the module list as a
+   marker; it does nothing at boot. Removing it does not change the kernel.
 
 Order does not matter; the module checks the kernel at every boot.
 
