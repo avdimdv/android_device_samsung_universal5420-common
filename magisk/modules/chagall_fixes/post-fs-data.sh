@@ -36,12 +36,3 @@ else
 fi
 cat "$TMP" > "$MO"
 rm -f "$TMP"
-
-# AudioFX suspends global effects such as JamesDSP, so hide it while JamesDSP is active; without
-# JamesDSP it is left alone. (post-fs-data runs before Magisk mounts the modules.)
-AFX=$MODDIR/system/priv-app/AudioFX
-if [ -d "$J" ] && [ ! -f "$J/disable" ] && [ ! -f "$J/remove" ]; then
-  mkdir -p "$AFX" && touch "$AFX/.replace"
-else
-  rm -rf "$MODDIR/system/priv-app"
-fi

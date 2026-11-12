@@ -98,6 +98,19 @@ findings; paths below are relative to this folder.
   (as Magisk marker module `chagall_kernel_nohook`) installed from the Magisk app: detected the
   kernel as already installed; on-device repack of the live boot image is byte-identical to the
   partition. Not exercised: a real kernel swap through the zip, and the TWRP path.
+- **2026-11-13 chagall_fixes v4:** AudioFX hidden always. Reason: after JamesDSP was removed
+  (module + app `james.dsp`, which crash-looped without its library), AudioFX attached Equalizer +
+  Bass Boost + Virtualizer (enabled) to every music session. Verified: no effects attached, EQ/DRC ok.
+- **Boot hang seen once (2026-11-13 00:17, first boot with v4), NOT reproduced in 2 further boots:**
+  boot animation loops, `system_server` killed by the watchdog every ~100 s, blocked in
+  `LineageHardwareManager` -> `vendor.lineage.touch@1.0::IKeyDisabler/default`. The touch HAL had
+  started without IKeyDisabler (it checks `/sys/class/sec/sec_touchkey/input/enabled` once at start;
+  the node was not usable yet) and on this non-Treble device `getService` waits forever.
+  **Recovery over adb:** `su -c 'stop vendor.touch-hal-1-0-samsung; start vendor.touch-hal-1-0-samsung'`
+  -> boot completes in seconds. Looks like a ROM race (HAL start vs touch-key driver), no known
+  link to the module; watch for it.
+- Headphone gain chain (measured 2026-11-12): slider 12/25 = -24 dB (policy curve) + HPOUT1 Digital
+  Volume 115 = -6.5 dB -> -30.5 dBFS; safe-volume warning fires at that step (index based).
 - Was optional: hardware EQ (EQ1–4) in front of DRC1 for the bass cut JamesDSP used to do;
   tune T1 (e.g. +9 dB = knee −18 → −9 dB, CTRL4 0x02CC) if the maximum is not loud enough.
 

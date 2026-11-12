@@ -26,6 +26,10 @@ Magisk app; the TWRP path of the kernel zip is untested). Use at your own risk.
   **Only with `chagall_kernel_nohook.zip`**; with the ROM's kernel the module leaves this part out
   automatically and the speaker sounds as before.
 
+- **AudioFX is hidden.** LineageOS's AudioFX switches on an equalizer, bass boost and virtualizer
+  by default for every output, which works against the tuned speaker chain. It comes back when the
+  module is removed.
+
 The module is systemless: nothing on the system/vendor partitions is changed. Disable or remove it
 in Magisk and everything is stock again.
 
