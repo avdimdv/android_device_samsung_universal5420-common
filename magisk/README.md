@@ -16,7 +16,7 @@ Sources for the modules built by `build-env/05-make-magisk-modules.sh` into `art
 | Speaker hardware EQ + limiter + loudness (WM5102: AIF1 → EQ1/2 (E1: −9/−3/0/+1/0 dB) → DRC1 (T1: +6 dB, ceiling −9 dBFS) → SPKOUT) – **only with our kernel** | same file, lines tagged `<!-- drc-speaker -->`; `post-fs-data.sh` strips them if `/sys/class/misc/wolfson_control` exists | chagall-common 0003, 0004 + `patches/kernel/samsung/exynos5420/0001` |
 | VoIP to speaker (no earpiece) | `system/vendor/etc/audio_policy_configuration.xml` | `configs/audio/audio_policy_configuration.xml` |
 | Working AEC/NS for VoIP (AOSP instead of broken LifeVibes) | `system/vendor/etc/audio_effects.xml` + `post-fs-data.sh` | `configs/audio/audio_effects.xml` |
-| AudioFX hidden, always (it attaches Equalizer + Bass Boost + Virtualizer to every music session by default and colours the tuned chain; it also suspends global effects) | `system/priv-app/AudioFX/.replace` | – |
+| AudioFX: not touched (v5). v2-v4 hid it; the owner prefers it for headphones. It enables Equalizer + Bass Boost + Virtualizer per output by default - switch its **speaker** profile off, the hardware chain is tuned without it | - | - |
 
 `post-fs-data.sh` adds the JamesDSP library/effect to `audio_effects.xml` when the
 `ainur_jamesdsp` module is active, and writes the same content into JamesDSP's own copy of that

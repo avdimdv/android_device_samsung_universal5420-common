@@ -101,6 +101,9 @@ findings; paths below are relative to this folder.
 - **2026-11-13 chagall_fixes v4:** AudioFX hidden always. Reason: after JamesDSP was removed
   (module + app `james.dsp`, which crash-looped without its library), AudioFX attached Equalizer +
   Bass Boost + Virtualizer (enabled) to every music session. Verified: no effects attached, EQ/DRC ok.
+- **2026-11-13 00:42 chagall_fixes v5:** AudioFX no longer touched (owner missed its headphone sound;
+  v4's hiding lasted one evening). Rule of use: AudioFX **off for the speaker profile**, optional for
+  headphones. Installed with `magisk --install-module`, verified after reboot (boot 54 s).
 - **Boot hang seen once (2026-11-13 00:17, first boot with v4), NOT reproduced in 2 further boots:**
   boot animation loops, `system_server` killed by the watchdog every ~100 s, blocked in
   `LineageHardwareManager` -> `vendor.lineage.touch@1.0::IKeyDisabler/default`. The touch HAL had

@@ -25,4 +25,6 @@ for m in chagall_bt_sco_fix chagall_mic_fix chagall_voip_speaker chagall_bt_sco_
     ui_print "- old module $m will be removed on reboot"
   fi
 done
+# v2-v4 hid AudioFX; it is left alone now (make sure nothing of that is carried over)
+rm -rf "$MODPATH/system/priv-app"
 ui_print "- reboot to activate"
