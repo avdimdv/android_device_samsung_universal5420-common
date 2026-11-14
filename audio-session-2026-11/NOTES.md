@@ -14,7 +14,7 @@ findings; paths below are relative to this folder.
 | VoIP echo on speaker | gross bug fixed (working AEC config); residual echo = Telegram's AECM + JamesDSP |
 | Speaker | **hardware EQ (bass cut) + limiter + loudness (WM5102 EQ1/2 → DRC1, +6 dB, no clipping)** – needs our kernel (Wolfson hook removed); JamesDSP off. Shareable package: `artifacts\release\` (`magisk/README.md`) |
 | Delivery | Magisk module **`chagall_fixes` v2** + our kernel in the boot image (`../magisk/README.md`) |
-| Repo | local branch `audio-bt-call-fixes` (never push); Galaxy Alpha plan in worktree `D:\SOURCES\galaxy-alpha` |
+| Repo | branch `audio-bt-call-fixes` on the fork `avdimdv/...` (push only on request); Galaxy Alpha has its own repo `D:\SOURCES\galaxy-alpha` |
 
 ## Device / environment
 
@@ -296,4 +296,4 @@ Dmitry is a developer, but not an Android one. He prefers one copy-paste command
 explicit "run this in Windows cmd" vs "on the tablet". Output files go to `artifacts\` in this repo
 (not Downloads – changed 2026-11-09 at his request). For reboots: ask once, then reboot via adb
 yourself and re-set `adb logcat -G 16M` afterwards (default buffer rolls over during calls).
-The local branches are never pushed.
+Pushes go to the personal fork only, and only when he asks.

@@ -15,8 +15,11 @@ on D:\, then `build-env/03-overlay-local-tree.sh` + `04-build.sh` inside WSL.
 Changes to other repos of the tree (e.g. `mixer_paths_0.xml`, which lives in chagall-common) are
 kept as `patches/<project path>/*.patch`, applied by 03. Magisk modules: sources in
 `magisk/`, built by `build-env/05-make-magisk-modules.sh` into `artifacts\` (git-ignored).
-Branch `audio-bt-call-fixes` is local only – never push. Separate project: Galaxy Alpha custom
-ROM plan on local orphan branch `galaxy-alpha`, worktree `D:\SOURCES\galaxy-alpha`.
+Remotes: `origin` = personal fork github.com/avdimdv/android_device_samsung_universal5420-common
+(SSH alias `github-personal`), `upstream` = HazouPH. Commit identity is per repo
+(`avdim <avdimdv@gmail.com>`), never the global work identity. Ask the user before every push.
+Separate project: Galaxy Alpha custom ROM in its own repo `D:\SOURCES\galaxy-alpha`
+(github.com/avdimdv/galaxy-alpha-lineage, private).
 
 The tablet is reachable with `adb` from this Windows PC; root only via
 `adb shell "su -c '...'"` (adb root is disabled).
