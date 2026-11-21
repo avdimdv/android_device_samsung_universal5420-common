@@ -17,4 +17,8 @@ if [ ! -f .patches-applied ]; then
 fi
 breakfast chagallwifi ${VARIANT:-userdebug}  # BoardConfig uses SELINUX_IGNORE_NEVERALLOWS -> userdebug only (tablet's "user" is spoofed by Magisk props)
 if [ $# -eq 0 ]; then set -- libbt-vendor audio.primary.universal5420; fi
-m -j$(nproc) "$@" || { echo "BUILD FAILED"; exit 1; }
+# -j2, not -j$(nproc): builds must not saturate the machine (decided 2026-11-21 - build speed is
+# explicitly less important than keeping ordinary work responsive). Pair with processors=2 in
+# .wslconfig; more jobs than cores only adds queueing. Override with JOBS=... if you ever want
+# a fast build while doing nothing else.
+m -j"${JOBS:-2}" "$@" || { echo "BUILD FAILED"; exit 1; }

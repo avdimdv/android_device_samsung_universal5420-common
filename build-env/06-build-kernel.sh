@@ -25,7 +25,7 @@ rm -rf "$OUT"; mkdir -p "$OUT"
 export KBUILD_BUILD_USER=${KBUILD_BUILD_USER:-nobody}
 export KBUILD_BUILD_HOST=${KBUILD_BUILD_HOST:-android-build}
 export KBUILD_BUILD_TIMESTAMP=${KBUILD_BUILD_TIMESTAMP:-"Thu Jan 2 20:32:35 CET 2025"}
-M=(make -C "$SRC" O="$OUT" ARCH=arm CROSS_COMPILE="$TC" "${LV[@]}" -j"$(nproc)")
+M=(make -C "$SRC" O="$OUT" ARCH=arm CROSS_COMPILE="$TC" "${LV[@]}" -j"${JOBS:-2}")
 "${M[@]}" lineageos_chagallwifi_defconfig > "$OUT/build.log" 2>&1
 "${M[@]}" zImage >> "$OUT/build.log" 2>&1 || { tail -30 "$OUT/build.log"; echo "KERNEL BUILD FAILED"; exit 1; }
 Z=$OUT/arch/arm/boot/zImage
