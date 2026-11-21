@@ -26,9 +26,12 @@ Magisk app; the TWRP path of the kernel zip is untested). Use at your own risk.
   **Only with `chagall_kernel_nohook.zip`**; with the ROM's kernel the module leaves this part out
   automatically and the speaker sounds as before.
 
-The module does not touch AudioFX. If you use it, switch it **off for the speaker** (it keeps a
-profile per output): its bass boost works against the tuned speaker chain. For headphones it is a
-matter of taste.
+The module does not touch AudioFX. On **our own ROM build AudioFX is not installed at all** - it
+would put a software EQ/bass boost and a second compressor in front of the hardware EQ + limiter,
+which only makes the speaker quieter and cause pumping. If you are on the prebuilt Deathly ROM,
+AudioFX is still there: switch it **off for the speaker** (it keeps a profile per output device),
+because its bass boost works against the tuned speaker chain. For headphones it is a matter of
+taste - nothing in the module touches the headphone path.
 
 The module is systemless: nothing on the system/vendor partitions is changed. Disable or remove it
 in Magisk and everything is stock again.

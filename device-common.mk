@@ -240,6 +240,15 @@ PRODUCT_COPY_FILES += \
     $(COMMON_PATH)/configs/wifi/p2p_supplicant_overlay.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wifi/p2p_supplicant_overlay.conf \
     $(COMMON_PATH)/configs/wifi/wpa_supplicant_overlay.conf:$(TARGET_COPY_OUT_VENDOR)/etc/wifi/wpa_supplicant_overlay.conf
 
+# AudioFX is dropped on purpose (decided 2026-11-21). It would stack a software EQ / bass boost
+# and a second DRC in front of the WM5102 hardware EQ + limiter that chagall_fixes tunes for the
+# speaker: the extra low end just pushes the speaker into the hardware limiter, so the tablet gets
+# quieter and starts pumping. The hardware chain is measured, so it wins. The effects themselves
+# stay declared in configs/audio/audio_effects.xml - third-party EQs can still use them.
+# This tree has no EXCLUDE_AUDIOFX switch, so remove it from the final package list.
+PRODUCT_PACKAGES_REMOVE += \
+    AudioFX
+
 # Properties
 -include $(COMMON_PATH)/system_prop.mk
 
