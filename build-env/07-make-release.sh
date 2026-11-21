@@ -54,4 +54,31 @@ kzip chagall_kernel_stock.zip  "$STOCK" "$STOCK_MD5" "ROM's original kernel (73a
 (cd "$REL" && sha256sum *.zip > SHA256SUMS && cat SHA256SUMS)
 if grep -rIl -E '[A-Za-z0-9._-]+@[A-Za-z0-9-]+\.[a-z]{2,}' "$REL/source" "$REL/README.md" | grep -v noreply; then
   echo "WARNING: files above still contain an e-mail address"; fi
+
+# --- the ROM zip is NOT built by this script, but if one exists it must be clean too.
+# Without BUILD_USERNAME/BUILD_HOSTNAME in the environment, soong_ui takes them from the OS
+# (build/soong/ui/build/kati.go:99-112) and the machine's account name ends up in the public
+# artifact in several places at once: ro.build.user, ro.build.host, and via
+# BUILD_NUMBER = eng.$(BUILD_USERNAME:0:6).<stamp> (version_defaults.mk:315) in
+# ro.build.version.incremental, ro.system.build.version.incremental, ro.build.display.id and
+# META-INF/com/android/metadata's post-build-incremental. 04-build.sh now exports generic values.
+ROM=${ROM:-$(ls "$TOP"/out/target/product/chagallwifi/lineage-*-chagallwifi.zip 2>/dev/null | head -1)}
+ROM=${ROM:-$(ls ~/lineage/out/target/product/chagallwifi/lineage-*-chagallwifi.zip 2>/dev/null | head -1)}
+if [ -n "$ROM" ] && [ -f "$ROM" ]; then
+  echo "checking ROM zip for build identity: $ROM"
+  LEAK=0
+  unzip -p "$ROM" 'META-INF/com/android/metadata' 2>/dev/null > /tmp/rel-meta
+  grep -qE 'eng\.(avdeev|avdeev\.|munich)' /tmp/rel-meta && { echo "  LEAK: metadata incremental"; LEAK=1; }
+  # build.prop lives inside system.img; unpack the target_files instead, it is the same content
+  TF=$(ls "$HOME"/lineage/out/target/product/chagallwifi/obj/PACKAGING/target_files_intermediates/*/SYSTEM/build.prop 2>/dev/null | head -1)
+  if [ -n "$TF" ]; then
+    for pat in 'ro.build.user=avdeev' 'ro.build.host=D-DA-NOTE' 'eng\.avdeev'; do
+      grep -qE "$pat" "$TF" && { echo "  LEAK in SYSTEM/build.prop: $pat"; LEAK=1; }
+    done
+  else
+    echo "  (target_files SYSTEM/build.prop not found - cannot verify)"
+  fi
+  [ "$LEAK" = 0 ] && echo "  clean" || echo "  >>> do not publish this zip; rebuild via 04-build.sh"
+fi
+
 ls -la "$REL"

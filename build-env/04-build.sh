@@ -8,6 +8,24 @@ cd "$TOP"
 export USE_CCACHE=1 CCACHE_EXEC=/usr/bin/ccache CCACHE_DIR=$HOME/.ccache
 ccache -M 40G >/dev/null
 export LC_ALL=C
+
+# Build identity: never let the machine's account name into a shipped artifact.
+# build/soong/ui/build/kati.go:99-112 sets BUILD_USERNAME from the OS user and
+# BUILD_HOSTNAME from the hostname *only when they are not already in the environment*, so
+# exporting them here fixes every downstream place at once:
+#   ro.build.user / ro.build.host                      (buildinfo.sh)
+#   BUILD_NUMBER = eng.$(BUILD_USERNAME:0:6).<stamp>   version_defaults.mk:315
+#     -> ro.build.version.incremental, ro.system.build.version.incremental,
+#        ro.build.display.id, and META-INF/com/android/metadata post-build-incremental
+#   FILE_NAME_TAG = eng.$(BUILD_USERNAME)              main.mk:83
+#     -> target_files/ota intermediate names
+# Without this a build from this PC embeds "avdeev" and the machine name "D-DA-NOTE" in the
+# public zip. Use DEV_IDENTITY=1 to keep the real name for a private debugging build.
+if [ "${DEV_IDENTITY:-0}" != "1" ]; then
+  export BUILD_USERNAME="${BUILD_USERNAME:-lineage}"
+  export BUILD_HOSTNAME="${BUILD_HOSTNAME:-localhost}"
+fi
+
 source build/envsetup.sh
 # HazouPH security/compat patches (idempotent: skips patches already applied)
 if [ ! -f .patches-applied ]; then
