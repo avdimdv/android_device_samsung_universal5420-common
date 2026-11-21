@@ -28,6 +28,12 @@ export JDK_JAVA_OPTIONS="${JDK_JAVA_OPTIONS:--Xmx3072m}"
 
 # These generators are single-threaded and memory-hungry: run them alone first so they never
 # compete with the parallel part of the build (same order as the Alpha's full-build-low-memory.sh).
+#
+# GOTCHA: a module removed from PRODUCT_PACKAGES is NOT deleted from out/target/product/<dev>/ by
+# an incremental build, and the image is packed from that directory - so the old file keeps
+# shipping. The AudioFX removal hit exactly this (2026-11-21): the config was right, get_build_var
+# showed 895 packages without AudioFX, and system/priv-app/AudioFX/AudioFX.apk was still in the
+# image. After ANY PRODUCT_PACKAGES change run  m installclean  before bacon.
 if [ "$1" = bacon ]; then
   for t in system-api-stubs-docs api-stubs-docs test-api-stubs-docs hiddenapi-lists-docs; do
     echo "== heavy step $t (-j1) $(date)"
