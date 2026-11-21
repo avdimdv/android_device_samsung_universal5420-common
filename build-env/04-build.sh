@@ -58,8 +58,15 @@ if [ "$1" = bacon ]; then
     m -j1 "$t" || echo "== $t not available here, continuing"
   done
 fi
-# -j2, not -j$(nproc): builds must not saturate the machine (decided 2026-11-21 - build speed is
-# explicitly less important than keeping ordinary work responsive). Pair with processors=2 in
-# .wslconfig; more jobs than cores only adds queueing. Override with JOBS=... if you ever want
-# a fast build while doing nothing else.
-m -j"${JOBS:-2}" "$@" || { echo "BUILD FAILED"; exit 1; }
+# -j comes from the MEMORY, not from nproc (policy revised 2026-11-21 evening: keep RAM under
+# control, let the CPU run full). jobs = (MemTotal_MB - 1400 - 2048) / 250, capped at nproc.
+# The constants are measured on this tree: ninja itself holds ~1.4 GB, the soong/kati JVMs ~2 GB
+# resident, a C++ job peaks around 250 MB. On the 6 GB VM that is ~9-10 jobs even with 16 cores;
+# going higher makes the build swap, which is slower than fewer jobs - a swap storm is what
+# OOM-killed Metalava on 2026-11-21. Override with JOBS=... if you want more.
+_mem_mb=$(( $(awk '/MemTotal/{print $2}' /proc/meminfo) / 1024 ))
+_jobs=$(( (_mem_mb - 1400 - 2048) / 250 ))
+[ "$_jobs" -gt "$(nproc)" ] && _jobs=$(nproc)
+[ "$_jobs" -lt 1 ] && _jobs=1
+echo "RAM ${_mem_mb} MB | cores $(nproc) | -j${JOBS:-$_jobs}"
+m -j"${JOBS:-$_jobs}" "$@" || { echo "BUILD FAILED"; exit 1; }
