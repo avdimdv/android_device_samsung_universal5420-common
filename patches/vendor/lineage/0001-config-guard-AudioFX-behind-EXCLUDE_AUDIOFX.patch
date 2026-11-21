@@ -1,0 +1,49 @@
+From cde5f39f627111f24f765fe6d7754385d25532b3 Mon Sep 17 00:00:00 2001
+From: avdim <avdimdv@gmail.com>
+Date: Sat, 21 Nov 2026 12:22:20 +0100
+Subject: [PATCH] config: guard AudioFX behind EXCLUDE_AUDIOFX
+
+Device trees cannot remove it themselves: inherit-product appends an @inherit: tag
+and build/make/core/node_fns.mk merges the list variables only after all product
+makefiles are read, so 'PRODUCT_PACKAGES := $(filter-out AudioFX,...)' in a leaf
+product mk is discarded. Verified on chagallwifi 2026-11-21: both an
+PRODUCT_PACKAGES_REMOVE line (a variable no rule in this tree implements at all) and
+a filter-out at the end of lineage_chagallwifi.mk left system/priv-app/AudioFX in the
+image.
+
+Off by default, so nothing changes for any other device.
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+Change-Id: I3cd41a68b478df4fb52f226392fc924caadcc7db
+---
+ config/common_mobile.mk | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/config/common_mobile.mk b/config/common_mobile.mk
+index e15120eb..f9ac6f36 100644
+--- a/config/common_mobile.mk
++++ b/config/common_mobile.mk
+@@ -22,9 +22,19 @@ PRODUCT_PACKAGES += \
+     ExactCalculator \
+     Exchange2
+ 
++# Lineage packages
++# EXCLUDE_AUDIOFX (set by device trees whose audio chain is measured in hardware - the
++# WM5102 EQ/limiter on universal5420) drops the software EQ/bass-boost app. It has to be
++# conditional *here*: PRODUCT_PACKAGES from an inheriting makefile is merged by
++# build/make/core/node_fns.mk after every product makefile has been read, so a filter-out
++# anywhere downstream of this line is discarded.
++ifndef EXCLUDE_AUDIOFX
++PRODUCT_PACKAGES += \
++    AudioFX
++endif
++
+ # Lineage packages
+ PRODUCT_PACKAGES += \
+-    AudioFX \
+     Backgrounds \
+     Eleven \
+     Etar \
+-- 
+2.25.1
+

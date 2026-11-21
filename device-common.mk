@@ -245,9 +245,17 @@ PRODUCT_COPY_FILES += \
 # speaker: the extra low end just pushes the speaker into the hardware limiter, so the tablet gets
 # quieter and starts pumping. The hardware chain is measured, so it wins. The effects themselves
 # stay declared in configs/audio/audio_effects.xml - third-party EQs can still use them.
-# This tree has no EXCLUDE_AUDIOFX switch, so remove it from the final package list.
-PRODUCT_PACKAGES_REMOVE += \
-    AudioFX
+#
+# The removal itself is NOT here: AudioFX arrives from vendor/lineage/config/common_mobile.mk,
+# and inherit-product only *tags* list variables - build/make/core/node_fns.mk merges them after
+# every product makefile has been read - so filtering PRODUCT_PACKAGES in this file or at the end
+# of lineage_chagallwifi.mk is discarded. Verified the hard way 2026-11-21: both attempts left
+# system/priv-app/AudioFX/AudioFX.apk in the image. PRODUCT_PACKAGES_REMOVE is not an option
+# either - no rule in build/make or vendor/lineage references it in this tree, so it is a silent
+# no-op. The only thing that works is the guard in the file that adds it
+# (patches/vendor/lineage/0001-config-guard-AudioFX-behind-EXCLUDE_AUDIOFX.patch), switched off
+# from here. This file is read before common_mobile.mk, so the value is set in time.
+EXCLUDE_AUDIOFX := true
 
 # Properties
 -include $(COMMON_PATH)/system_prop.mk
