@@ -4,6 +4,15 @@ For **chagallwifi** on **LineageOS 17.1 "deathly"** (HazouPH's unofficial build,
 **Magisk** (tested with 25.2). Tested on one tablet only (module and kernel zip installed from the
 Magisk app; the TWRP path of the kernel zip is untested). Use at your own risk.
 
+> **Which ROM are you on?** This page is for the **prebuilt Deathly ROM** - there you need this
+> module, it is the whole fix. If you are on **our own ROM build, do not install it**: every file
+> it delivers (`libbt-vendor.so`, `mixer_paths_0.xml`, `audio_policy_configuration.xml`,
+> `audio_effects.xml`) is already in that image, and the module bind-mounts its own copies over
+> them at every boot - an older module would silently replace the newer files in the ROM. If it is
+> already installed, **remove** it (not just disable) before flashing our ROM.
+> The kernel zips are likewise only for the prebuilt ROM; our build compiles the kernel without the
+> Wolfson hook, and the zips refuse to run on a kernel they do not recognise.
+
 | File | What it is | Needed? |
 |---|---|---|
 | `chagall_fixes.zip` | Magisk module with all fixes | yes |
