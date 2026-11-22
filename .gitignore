@@ -1,0 +1,4 @@
+# Machine-local, never published. 07-make-release.sh ORs the lines of this file into its
+# identity scan, which is what lets the public repo carry a working check without containing
+# the strings the check looks for. artifacts/ is covered by artifacts/.gitignore.
+build-env/leak-patterns.local

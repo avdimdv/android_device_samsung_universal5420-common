@@ -72,16 +72,41 @@ TOP=${TOP:-$HOME/lineage}
 first() { ls $1 2>/dev/null | head -1 || true; }
 ROM=${ROM:-$(first "$TOP/out/target/product/chagallwifi/lineage-*-chagallwifi.zip")}
 ROM=${ROM:-$(first "$HOME/lineage/out/target/product/chagallwifi/lineage-*-chagallwifi.zip")}
+
+# The check is an ALLOWLIST, not a blacklist. This repo is public, and a blacklist would have to
+# spell out the very account name, machine name and person it protects - publishing that is worse
+# than the leak it detects. Anything not produced by these scripts therefore fails, which is the
+# safe direction. Extra strings can be kept out of the repo in build-env/leak-patterns.local
+# (git-ignored); if that file exists its lines are OR-ed into the scan.
+OK_USER='^(lineage|android|builder|nobody)$'
+OK_HOST='^(localhost|android-build|wsl-build|localhost\.localdomain)$'
+OK_INCR='^(eng\.(lineage?|android|builder|alpha)\.[0-9]{8}\.[0-9]{6}|lineage_[A-Za-z0-9._-]+)$'
+LOCAL_PAT=''
+# tr -d '\r' is not cosmetic: this file lives on the Windows checkout, so it arrives CRLF, and
+# every pattern then has a trailing CR - "name\r" matches nothing, so the scan would silently
+# pass everything. Verified with a negative test, not by reading the code.
+if [ -f "$REPO/build-env/leak-patterns.local" ]; then
+  LOCAL_PAT=$(tr -d '\r' < "$REPO/build-env/leak-patterns.local" | grep -vE '^[[:space:]]*(#|$)' | paste -sd'|')
+fi
 if [ -n "$ROM" ] && [ -f "$ROM" ]; then
   echo "checking ROM zip for build identity: $ROM"
   LEAK=0
   unzip -p "$ROM" 'META-INF/com/android/metadata' 2>/dev/null > /tmp/rel-meta || true
-  grep -qE 'eng\.(avdeev|avdeev\.|munich)' /tmp/rel-meta && { echo "  LEAK: metadata incremental"; LEAK=1; }
+  inc=$(sed -n 's/^post-build-incremental=//p' /tmp/rel-meta | head -1)
+  if [ -n "$inc" ] && ! echo "$inc" | grep -qE "$OK_INCR"; then
+    echo "  LEAK: metadata post-build-incremental is not a release-style value: $inc"; LEAK=1
+  fi
   # build.prop lives inside system.img; unpack the target_files instead, it is the same content
   TF=$(first "$HOME/lineage/out/target/product/chagallwifi/obj/PACKAGING/target_files_intermediates/*/SYSTEM/build.prop")
   if [ -n "$TF" ]; then
-    for pat in 'ro.build.user=avdeev' 'ro.build.host=D-DA-NOTE' 'eng\.avdeev'; do
-      grep -qE "$pat" "$TF" && { echo "  LEAK in SYSTEM/build.prop: $pat"; LEAK=1; }
+    for kv in ro.build.user:$OK_USER ro.build.host:$OK_HOST; do
+      k=${kv%%:*}; re=${kv#*:}
+      v=$(sed -n "s/^$k=//p" "$TF" | head -1)
+      [ -n "$v" ] && ! echo "$v" | grep -qE "$re" && { echo "  LEAK in build.prop: $k=$v"; LEAK=1; }
+    done
+    for k in ro.build.version.incremental ro.system.build.version.incremental; do
+      v=$(sed -n "s/^$k=//p" "$TF" | head -1)
+      [ -n "$v" ] && ! echo "$v" | grep -qE "$OK_INCR" && { echo "  LEAK in build.prop: $k=$v"; LEAK=1; }
     done
   else
     echo "  (target_files SYSTEM/build.prop not found - cannot verify)"
@@ -90,23 +115,29 @@ if [ -n "$ROM" ] && [ -f "$ROM" ]; then
 fi
 
 # --- every published artifact, not just the ROM.
-# The build-identity scan above only looked at build.prop and the zip metadata, so it missed the
-# other way a name gets out: a literal in module.prop, which the Magisk app shows in its module
-# list. chagall_fixes v5 and both kernel zips shipped "author=Dmitry" while every avdeev pattern
-# reported clean. Scan the finished zips themselves, for every form of the name.
+# The scan above only looked at build.prop and zip metadata, so it missed the other way a name
+# gets out: a literal in module.prop, which the Magisk app shows in its module list. v5 shipped a
+# real first name there while every build-property check reported clean. So scan the finished zips
+# themselves - generically: any e-mail address, and module.prop's author against an allowlist.
 echo "checking published artifacts for personal identity"
-NAMEPAT='Dmitry|avdeev|avdeev1|D-DA-NOTE|cinegy|@gmail|munich'
+NAMEPAT="[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
+[ -n "$LOCAL_PAT" ] && NAMEPAT="$NAMEPAT|$LOCAL_PAT"
+OK_AUTHOR='^(avdim|lineage|LineageOS)$'
 LEAK=0
 for z in "$REL"/*.zip; do
   [ -f "$z" ] || continue
   D=$(mktemp -d); unzip -oq "$z" -d "$D" 2>/dev/null
   # text members verbatim, plus the kernel image via strings (zImage is compressed, so a plain
-  # grep cannot see LINUX_COMPILE_BY/HOST in linux_banner - check compile.h in the kernel tree)
+  # grep cannot see LINUX_COMPILE_BY/HOST in linux_banner - check compile.h in the kernel tree).
   # The "|| true" matters: with `set -eo pipefail` a grep that finds nothing returns 1, which
   # inside a command substitution would abort the whole script on the clean path.
   bad=$(grep -rlEi "$NAMEPAT" "$D" 2>/dev/null | sed "s#$D/##" | tr '\n' ' ' || true)
   bad="$bad $(strings -a "$D"/kernel/zImage 2>/dev/null | grep -oiE "$NAMEPAT" | sort -u | tr '\n' ' ' || true)"
   bad=$(echo "$bad" | sed 's/^ *//;s/ *$//')
+  au=$(sed -n 's/^author=//p' "$D/module.prop" 2>/dev/null | head -1)
+  if [ -n "$au" ] && ! echo "$au" | grep -qE "$OK_AUTHOR"; then
+    bad="$bad module.prop:author=$au"
+  fi
   if [ -n "$bad" ]; then echo "  LEAK $(basename "$z"): $bad"; LEAK=1; else echo "  clean: $(basename "$z")"; fi
   rm -rf "$D"
 done

@@ -19,8 +19,8 @@ export LC_ALL=C
 #        ro.build.display.id, and META-INF/com/android/metadata post-build-incremental
 #   FILE_NAME_TAG = eng.$(BUILD_USERNAME)              main.mk:83
 #     -> target_files/ota intermediate names
-# Without this a build from this PC embeds "avdeev" and the machine name "D-DA-NOTE" in the
-# public zip. Use DEV_IDENTITY=1 to keep the real name for a private debugging build.
+# Without this, a build from this machine embeds the OS account name and the PC's hostname in the
+# public zip. Use DEV_IDENTITY=1 to keep the real values for a private debugging build.
 if [ "${DEV_IDENTITY:-0}" != "1" ]; then
   export BUILD_USERNAME="${BUILD_USERNAME:-lineage}"
   export BUILD_HOSTNAME="${BUILD_HOSTNAME:-localhost}"

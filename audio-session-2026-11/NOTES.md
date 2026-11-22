@@ -66,7 +66,7 @@ findings; paths below are relative to this folder.
   (`BASE` file) = what HazouPH shipped (baseline build: same decompressed size, only two driver
   build-date strings differ). Built with `04-build.sh kernel`, packed with
   `../build-env/boot-repack.py` into the Magisk boot image → `../artifacts/kernel-nohook/`.
-  Flashed with dd, boots (`uname -v` … `Wed Nov 11 00:23:52 CET 2026`, `dmitry@wsl-build`), Magisk OK,
+  Flashed with dd, boots (`uname -v` … `Wed Nov 11 00:23:52 CET 2026`, builder `<user>@wsl-build`), Magisk OK,
   playback 0 write errors, BT SCO config 0, dmesg "WM5102 revision C". `SPKOUTL Input 1` writes now
   stick (None/AIF1RX1 read back).
 - Recovery if a kernel doesn't boot: Power+VolDown (force off) → VolUp+Home+Power (TWRP) → Install →
@@ -292,7 +292,7 @@ adb shell "su -c 'tinymix'" > artifacts\tinymix.txt
 
 ## Working with the user
 
-Dmitry is a developer, but not an Android one. He prefers one copy-paste command block at a time and
+The maintainer is a developer, but not an Android one. He prefers one copy-paste command block at a time and
 explicit "run this in Windows cmd" vs "on the tablet". Output files go to `artifacts\` in this repo
 (not Downloads – changed 2026-11-09 at his request). For reboots: ask once, then reboot via adb
 yourself and re-set `adb logcat -G 16M` afterwards (default buffer rolls over during calls).

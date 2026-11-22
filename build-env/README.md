@@ -40,7 +40,7 @@ SELinux label. `magisk/modules/<id>/` = `module.prop` + `files` (module path →
 tree). `05-make-magisk-modules.sh [id ...]` zips them into `artifacts\<id>.zip`.
 
 Output: `~/lineage/out/target/product/chagallwifi/` (WSL path
-`\\wsl$\Ubuntu\home\avdeev\lineage\out\target\product\chagallwifi`).
+`\\wsl$\Ubuntu\home\<user>\lineage\out\target\product\chagallwifi`).
 Single modules land in `.../vendor/lib/` (e.g. `libbt-vendor.so`) and can be tested via a
 Magisk module without reflashing.
 
@@ -60,7 +60,7 @@ WSL2 "Ubuntu" 20.04  ~/lineage                           (Linux ext4 disk =
 D:\...\artifacts\<module-id>.zip   → adb push to /sdcard/Download → Magisk
 ```
 
-- WSL sees Windows drives as `/mnt/c`, `/mnt/d`; Windows sees the Linux disk as `\\wsl$\Ubuntu\home\avdeev`.
+- WSL sees Windows drives as `/mnt/c`, `/mnt/d`; Windows sees the Linux disk as `\\wsl$\Ubuntu\home\<user>`.
 - The overlay only carries **tracked** files that changed. A brand-new file must be `git add`-ed
   (staging is enough) or it will not reach the build tree.
 - Nothing is uploaded anywhere; the only network traffic is `repo sync` / `git fetch` from GitHub.
