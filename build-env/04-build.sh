@@ -25,15 +25,11 @@ if [ "${DEV_IDENTITY:-0}" != "1" ]; then
   export BUILD_USERNAME="${BUILD_USERNAME:-lineage}"
   export BUILD_HOSTNAME="${BUILD_HOSTNAME:-localhost}"
 fi
-# Fresh BUILD_NUMBER/date for every run: main.mk:67 writes out/build_number.txt on every kati run,
-# but build.prop recipes only `cat` it at recipe RUN time and no rule DEPENDS on it - deleting the
-# stamp alone changes nothing (proven 2026-11-22: byte-identical zip). So delete the staging
-# build.prop files too; their recipes then re-run and read the new stamp.
+# Fresh BUILD_NUMBER: ONLY installclean does it reliably (see galaxy-alpha full-build-low-memory.sh
+# for the proof: the stamp is written by ckati, nothing depends on the file, and soong_ui skips
+# ckati when no .mk inputs changed). Release builds here go through overnight-both.sh which sets
+# INSTALLCLEAN=1; the rm below only clears aborted-run leftovers.
 rm -f out/build_number.txt out/build_date.txt out/soong/dates_property
-O2=out/target/product/chagallwifi
-rm -f $O2/system/build.prop $O2/system/product/build.prop $O2/system/vendor/build.prop \
-      $O2/system/vendor/odm/etc/build.prop $O2/vendor/build.prop $O2/odm/build.prop \
-      $O2/product/build.prop 2>/dev/null
 
 source build/envsetup.sh
 # HazouPH security/compat patches (idempotent: skips patches already applied)
