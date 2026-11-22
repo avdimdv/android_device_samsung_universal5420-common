@@ -64,15 +64,21 @@ if grep -rIl -E '[A-Za-z0-9._-]+@[A-Za-z0-9-]+\.[a-z]{2,}' "$REL/source" "$REL/R
 # BUILD_NUMBER = eng.$(BUILD_USERNAME:0:6).<stamp> (version_defaults.mk:315) in
 # ro.build.version.incremental, ro.system.build.version.incremental, ro.build.display.id and
 # META-INF/com/android/metadata's post-build-incremental. 04-build.sh now exports generic values.
-ROM=${ROM:-$(ls "$TOP"/out/target/product/chagallwifi/lineage-*-chagallwifi.zip 2>/dev/null | head -1)}
-ROM=${ROM:-$(ls ~/lineage/out/target/product/chagallwifi/lineage-*-chagallwifi.zip 2>/dev/null | head -1)}
+# TOP was never set in this script, so the first ls looked in /out/... and failed; with
+# `set -eo pipefail` at the top that aborted the whole script *before* any of these checks ran -
+# the leak scan silently did nothing while the zips above it were still written. Define it, and
+# make a missing zip a normal empty result rather than an error.
+TOP=${TOP:-$HOME/lineage}
+first() { ls $1 2>/dev/null | head -1 || true; }
+ROM=${ROM:-$(first "$TOP/out/target/product/chagallwifi/lineage-*-chagallwifi.zip")}
+ROM=${ROM:-$(first "$HOME/lineage/out/target/product/chagallwifi/lineage-*-chagallwifi.zip")}
 if [ -n "$ROM" ] && [ -f "$ROM" ]; then
   echo "checking ROM zip for build identity: $ROM"
   LEAK=0
-  unzip -p "$ROM" 'META-INF/com/android/metadata' 2>/dev/null > /tmp/rel-meta
+  unzip -p "$ROM" 'META-INF/com/android/metadata' 2>/dev/null > /tmp/rel-meta || true
   grep -qE 'eng\.(avdeev|avdeev\.|munich)' /tmp/rel-meta && { echo "  LEAK: metadata incremental"; LEAK=1; }
   # build.prop lives inside system.img; unpack the target_files instead, it is the same content
-  TF=$(ls "$HOME"/lineage/out/target/product/chagallwifi/obj/PACKAGING/target_files_intermediates/*/SYSTEM/build.prop 2>/dev/null | head -1)
+  TF=$(first "$HOME/lineage/out/target/product/chagallwifi/obj/PACKAGING/target_files_intermediates/*/SYSTEM/build.prop")
   if [ -n "$TF" ]; then
     for pat in 'ro.build.user=avdeev' 'ro.build.host=D-DA-NOTE' 'eng\.avdeev'; do
       grep -qE "$pat" "$TF" && { echo "  LEAK in SYSTEM/build.prop: $pat"; LEAK=1; }
@@ -96,8 +102,10 @@ for z in "$REL"/*.zip; do
   D=$(mktemp -d); unzip -oq "$z" -d "$D" 2>/dev/null
   # text members verbatim, plus the kernel image via strings (zImage is compressed, so a plain
   # grep cannot see LINUX_COMPILE_BY/HOST in linux_banner - check compile.h in the kernel tree)
-  bad=$(grep -rlEi "$NAMEPAT" "$D" 2>/dev/null | sed "s#$D/##" | tr '\n' ' ')
-  bad="$bad $(strings -a "$D"/kernel/zImage 2>/dev/null | grep -oiE "$NAMEPAT" | sort -u | tr '\n' ' ')"
+  # The "|| true" matters: with `set -eo pipefail` a grep that finds nothing returns 1, which
+  # inside a command substitution would abort the whole script on the clean path.
+  bad=$(grep -rlEi "$NAMEPAT" "$D" 2>/dev/null | sed "s#$D/##" | tr '\n' ' ' || true)
+  bad="$bad $(strings -a "$D"/kernel/zImage 2>/dev/null | grep -oiE "$NAMEPAT" | sort -u | tr '\n' ' ' || true)"
   bad=$(echo "$bad" | sed 's/^ *//;s/ *$//')
   if [ -n "$bad" ]; then echo "  LEAK $(basename "$z"): $bad"; LEAK=1; else echo "  clean: $(basename "$z")"; fi
   rm -rf "$D"
