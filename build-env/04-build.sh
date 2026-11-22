@@ -52,6 +52,13 @@ export JDK_JAVA_OPTIONS="${JDK_JAVA_OPTIONS:--Xmx3072m}"
 # shipping. The AudioFX removal hit exactly this (2026-11-21): the config was right, get_build_var
 # showed 895 packages without AudioFX, and system/priv-app/AudioFX/AudioFX.apk was still in the
 # image. After ANY PRODUCT_PACKAGES change run  m installclean  before bacon.
+# INSTALLCLEAN=1 wipes the staging dir first - see the gotcha above; also needed after any
+# build-identity change, because e.g. odm/etc/build.prop has no build_number.txt dependency and
+# would otherwise keep a stale incremental from an older build.
+if [ "${INSTALLCLEAN:-0}" = "1" ] && [ "$1" = bacon ]; then
+  echo "== installclean $(date)"
+  m installclean
+fi
 if [ "$1" = bacon ]; then
   for t in system-api-stubs-docs api-stubs-docs test-api-stubs-docs hiddenapi-lists-docs; do
     echo "== heavy step $t (-j1) $(date)"
