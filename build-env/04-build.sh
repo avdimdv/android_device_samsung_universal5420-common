@@ -25,11 +25,15 @@ if [ "${DEV_IDENTITY:-0}" != "1" ]; then
   export BUILD_USERNAME="${BUILD_USERNAME:-lineage}"
   export BUILD_HOSTNAME="${BUILD_HOSTNAME:-localhost}"
 fi
-# Fresh BUILD_NUMBER/date for every run: main.mk:67 writes out/build_number.txt only if the file
-# is absent, and build.prop reads it back via BUILD_NUMBER_FROM_FILE (config.mk:773) - without
-# this, every rebuild on the same day keeps the first run's stamp. (out/build_number.txt, NOT
-# out/soong/build_number.txt.)
+# Fresh BUILD_NUMBER/date for every run: main.mk:67 writes out/build_number.txt on every kati run,
+# but build.prop recipes only `cat` it at recipe RUN time and no rule DEPENDS on it - deleting the
+# stamp alone changes nothing (proven 2026-11-22: byte-identical zip). So delete the staging
+# build.prop files too; their recipes then re-run and read the new stamp.
 rm -f out/build_number.txt out/build_date.txt out/soong/dates_property
+O2=out/target/product/chagallwifi
+rm -f $O2/system/build.prop $O2/system/product/build.prop $O2/system/vendor/build.prop \
+      $O2/system/vendor/odm/etc/build.prop $O2/vendor/build.prop $O2/odm/build.prop \
+      $O2/product/build.prop 2>/dev/null
 
 source build/envsetup.sh
 # HazouPH security/compat patches (idempotent: skips patches already applied)
