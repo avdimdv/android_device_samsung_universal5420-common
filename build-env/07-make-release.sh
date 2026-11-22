@@ -41,7 +41,9 @@ kzip() {  # <zip name> <zImage> <md5> <description> <short name>
   cp "$REL/README.md" "$W/"; cp -r "$REL/source" "$W/"
   chmod 0755 "$W/META-INF/com/google/android/update-binary"
   # module.prop: the Magisk app installs every zip as a module (customize.sh does the swap)
-  { echo "id=${1%.zip}"; echo "name=Tab S 10.5 (SM-T800) kernel: $5"; echo "version=v1"; echo "versionCode=1"; echo "author=Dmitry"
+  # author is published in the Magisk app's module list, so it uses the same pseudonym as the
+  # git identity - never a real name. See the leak scan at the bottom of this file.
+  { echo "id=${1%.zip}"; echo "name=Tab S 10.5 (SM-T800) kernel: $5"; echo "version=v1"; echo "versionCode=1"; echo "author=avdim"
     echo "description=Marker only. Installing this zip swapped the kernel inside the boot image ($4). Removing the module does NOT change the kernel; install the other kernel zip for that."
   } > "$W/module.prop"
   sh -n "$W/META-INF/com/google/android/update-binary"; sh -n "$W/kernel/swap.sh"; sh -n "$W/customize.sh"
@@ -80,5 +82,26 @@ if [ -n "$ROM" ] && [ -f "$ROM" ]; then
   fi
   [ "$LEAK" = 0 ] && echo "  clean" || echo "  >>> do not publish this zip; rebuild via 04-build.sh"
 fi
+
+# --- every published artifact, not just the ROM.
+# The build-identity scan above only looked at build.prop and the zip metadata, so it missed the
+# other way a name gets out: a literal in module.prop, which the Magisk app shows in its module
+# list. chagall_fixes v5 and both kernel zips shipped "author=Dmitry" while every avdeev pattern
+# reported clean. Scan the finished zips themselves, for every form of the name.
+echo "checking published artifacts for personal identity"
+NAMEPAT='Dmitry|avdeev|avdeev1|D-DA-NOTE|cinegy|@gmail|munich'
+LEAK=0
+for z in "$REL"/*.zip; do
+  [ -f "$z" ] || continue
+  D=$(mktemp -d); unzip -oq "$z" -d "$D" 2>/dev/null
+  # text members verbatim, plus the kernel image via strings (zImage is compressed, so a plain
+  # grep cannot see LINUX_COMPILE_BY/HOST in linux_banner - check compile.h in the kernel tree)
+  bad=$(grep -rlEi "$NAMEPAT" "$D" 2>/dev/null | sed "s#$D/##" | tr '\n' ' ')
+  bad="$bad $(strings -a "$D"/kernel/zImage 2>/dev/null | grep -oiE "$NAMEPAT" | sort -u | tr '\n' ' ')"
+  bad=$(echo "$bad" | sed 's/^ *//;s/ *$//')
+  if [ -n "$bad" ]; then echo "  LEAK $(basename "$z"): $bad"; LEAK=1; else echo "  clean: $(basename "$z")"; fi
+  rm -rf "$D"
+done
+[ "$LEAK" = 0 ] || echo "  >>> do not publish; fix the source and re-run this script"
 
 ls -la "$REL"
