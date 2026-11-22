@@ -25,6 +25,11 @@ if [ "${DEV_IDENTITY:-0}" != "1" ]; then
   export BUILD_USERNAME="${BUILD_USERNAME:-lineage}"
   export BUILD_HOSTNAME="${BUILD_HOSTNAME:-localhost}"
 fi
+# Fresh BUILD_NUMBER/date for every run: main.mk:67 writes out/build_number.txt only if the file
+# is absent, and build.prop reads it back via BUILD_NUMBER_FROM_FILE (config.mk:773) - without
+# this, every rebuild on the same day keeps the first run's stamp. (out/build_number.txt, NOT
+# out/soong/build_number.txt.)
+rm -f out/build_number.txt out/build_date.txt out/soong/dates_property
 
 source build/envsetup.sh
 # HazouPH security/compat patches (idempotent: skips patches already applied)
