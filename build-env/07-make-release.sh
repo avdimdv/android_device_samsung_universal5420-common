@@ -123,6 +123,12 @@ echo "checking published artifacts for personal identity"
 NAMEPAT="[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
 [ -n "$LOCAL_PAT" ] && NAMEPAT="$NAMEPAT|$LOCAL_PAT"
 OK_AUTHOR='^(avdim|lineage|LineageOS)$'
+# Exact addresses that are public and expected inside binaries (matched whole, case-insensitive):
+#   android@android.com - subject of AOSP's public test certificate (the overlays are signed with
+#                         build/target/product/security/testkey)
+#   ljzyal@gmail.com    - original author of the fingerprint HAL, `.author` in fingerprint.c
+#                         (upstream source, part of HazouPH's public tree)
+OK_ADDR='android@android\.com|ljzyal@gmail\.com'
 LEAK=0
 for z in "$REL"/*.zip; do
   [ -f "$z" ] || continue
@@ -131,7 +137,10 @@ for z in "$REL"/*.zip; do
   # grep cannot see LINUX_COMPILE_BY/HOST in linux_banner - check compile.h in the kernel tree).
   # The "|| true" matters: with `set -eo pipefail` a grep that finds nothing returns 1, which
   # inside a command substitution would abort the whole script on the clean path.
-  bad=$(grep -rlEi "$NAMEPAT" "$D" 2>/dev/null | sed "s#$D/##" | tr '\n' ' ' || true)
+  # -o lists every match as file:match, so an allowed address does not hide a second, real one
+  # in the same file.
+  bad=$( (cd "$D" && grep -raoEi "$NAMEPAT" . 2>/dev/null) | grep -viE ":($OK_ADDR)\$" \
+         | cut -d: -f1 | sed 's#^\./##' | sort -u | tr '\n' ' ' || true)
   bad="$bad $(strings -a "$D"/kernel/zImage 2>/dev/null | grep -oiE "$NAMEPAT" | sort -u | tr '\n' ' ' || true)"
   bad=$(echo "$bad" | sed 's/^ *//;s/ *$//')
   au=$(sed -n 's/^author=//p' "$D/module.prop" 2>/dev/null | head -1)

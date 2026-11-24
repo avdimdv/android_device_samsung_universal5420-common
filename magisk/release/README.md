@@ -1,13 +1,13 @@
-# Galaxy Tab S 10.5 Wi-Fi (SM-T800) – audio and Bluetooth call fixes
+# Galaxy Tab S 10.5 Wi-Fi (SM-T800) – audio, Bluetooth call and fingerprint fixes
 
 For **chagallwifi** on **LineageOS 17.1 "deathly"** (HazouPH's unofficial build, Android 10) with
 **Magisk** (tested with 25.2). Tested on one tablet only (module and kernel zip installed from the
 Magisk app; the TWRP path of the kernel zip is untested). Use at your own risk.
 
 > **Which ROM are you on?** This page is for the **prebuilt Deathly ROM** - there you need this
-> module, it is the whole fix. If you are on **our own ROM build, do not install it**: every file
+> module, it is the whole fix. If you are on **our own ROM build, do not install it**: the files
 > it delivers (`libbt-vendor.so`, `mixer_paths_0.xml`, `audio_policy_configuration.xml`,
-> `audio_effects.xml`) is already in that image, and the module bind-mounts its own copies over
+> `audio_effects.xml`, the fingerprint HAL) are already in that image, and the module bind-mounts its own copies over
 > them at every boot - an older module would silently replace the newer files in the ROM. If it is
 > already installed, **remove** it (not just disable) before flashing our ROM.
 > The kernel zips are likewise only for the prebuilt ROM; our build compiles the kernel without the
@@ -45,6 +45,35 @@ taste - nothing in the module touches the headphone path.
 The module is systemless: nothing on the system/vendor partitions is changed. Disable or remove it
 in Magisk and everything is stock again.
 
+## Fingerprint (home button)
+
+The tablet's fingerprint sensor is a **swipe** sensor in the home button. In the ROM it pretends to
+work: enrolment looks fine, but unlock never succeeds. The module replaces the fingerprint HAL
+(`fingerprint.universal5420.so`, built from the ROM's own source with fixes):
+
+- **Unlock works.** The HAL leaked its 128 KB secure memory buffer every time the sensor was used,
+  so after the first session the sensor could not start any more.
+- **Enrolment and removal are reported correctly** (every enrolment was reported as failed although
+  it was saved; after removing a fingerprint the Settings list did not refresh).
+- **No hangs or crashes**: a hang after the 60 s enrolment timeout put Android into a restart loop;
+  a request arriving while the previous one was still closing could crash the HAL; a new request
+  that Android started without cancelling the old one was refused ("Sensor is busy", seen as an
+  instant enrolment timeout).
+- **Enrolment pages say "swipe"** and point to the home button instead of "touch the sensor on the
+  back" (overlay for Settings).
+- **5 fingerprint slots instead of 3** (overlay).
+
+**How to enrol:** enrol the **same finger in all 5 slots**, and vary the swipes a little (slightly
+left, right, faster, slower). A swipe sees only a strip of the finger and is compared with every
+stored print: with one enrolment only about 1 swipe in 6 unlocked, with the same finger enrolled
+several times most swipes do. Swipe slowly and straight over the home button. Expect a few rejected
+swipes now and then - it is a 2014 swipe sensor, not a modern touch sensor.
+
+If unlock keeps failing after enrolments made **without** the module (old HAL), remove all
+fingerprints in Settings, then as root:
+`stop vendor.fps_hal; mv /data/validity/finger.db /data/validity/finger.db.old; start vendor.fps_hal`
+and enrol again - the old HAL can leave a hidden template behind that Settings cannot delete.
+
 ## Install
 
 1. Magisk app → Modules → **Install from storage** → `chagall_fixes.zip` → Reboot.
@@ -80,7 +109,8 @@ flash `chagall_kernel_nohook.zip` once more.
 
 ## Undo
 
-- Module: Magisk app → Modules → remove `Tab S 10.5 (SM-T800) audio + BT fixes` → Reboot.
+- Module: Magisk app → Modules → remove `Tab S 10.5 (SM-T800) audio, BT + fingerprint fixes` →
+  Reboot. Remove your fingerprints in Settings first: the ROM's own HAL does not unlock reliably.
 - Kernel: flash `chagall_kernel_stock.zip` the same way, or in TWRP: Install → Install Image →
   `chagall_kernel/boot-before-*.img` → Boot.
 - Tablet does not boot after the kernel zip: hold Power + Volume Down until it restarts, switch to
@@ -94,6 +124,8 @@ flash `chagall_kernel_nohook.zip` once more.
 - Bluetooth call volume/mic level is whatever the headset decides; not tuned.
 - Recording from a Bluetooth mic outside of calls does not work (audio HAL limitation).
 - Residual speakerphone echo in apps that use their own echo canceller.
+- Fingerprint: several swipes are sometimes needed; rarely, right after a quick lock/unlock, the
+  sensor stays busy for up to a minute.
 
 ## Source
 
@@ -101,5 +133,5 @@ flash `chagall_kernel_nohook.zip` once more.
   `android_device_samsung_chagall-common`, `android_kernel_samsung_exynos5420`
   (branch `lineage-17.1-deathly`).
 - `source/kernel-*.patch` – on kernel commit `73a7ba1f` (GPL-2.0).
-- `source/chagall-common-*.patch` – `mixer_paths_0.xml` changes.
+- `source/chagall-common-*.patch` – `mixer_paths_0.xml` changes, fingerprint HAL fixes, 5-slot limit.
 - `source/universal5420-common.diff` – Bluetooth vendor library config, audio policy, audio effects.
