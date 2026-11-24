@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Runtime resource overlay for Settings: the Tab S 10.5 has a SWIPE fingerprint sensor in the
+     home button below the screen, but AOSP's enrolment pages say "touch the sensor on the back". -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="org.lineageos.overlay.chagall.fingerprintswipe">
+    <overlay android:targetPackage="com.android.settings"
+        android:isStatic="true"
+        android:priority="10" />
+    <application android:hasCode="false" />
+</manifest>

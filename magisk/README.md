@@ -16,12 +16,21 @@ Sources for the modules built by `build-env/05-make-magisk-modules.sh` into `art
 | Speaker hardware EQ + limiter + loudness (WM5102: AIF1 → EQ1/2 (E1: −9/−3/0/+1/0 dB) → DRC1 (T1: +6 dB, ceiling −9 dBFS) → SPKOUT) – **only with our kernel** | same file, lines tagged `<!-- drc-speaker -->`; `post-fs-data.sh` strips them if `/sys/class/misc/wolfson_control` exists | chagall-common 0003, 0004 + `patches/kernel/samsung/exynos5420/0001` |
 | VoIP to speaker (no earpiece) | `system/vendor/etc/audio_policy_configuration.xml` | `configs/audio/audio_policy_configuration.xml` |
 | Working AEC/NS for VoIP (AOSP instead of broken LifeVibes) | `system/vendor/etc/audio_effects.xml` + `post-fs-data.sh` | `configs/audio/audio_effects.xml` |
+| Fingerprint unlock (v6): the Validity HAL leaked its 128 KB secure ion buffer every session, reported every enrolment as failed-but-saved, and sent garbage in "removed" (Settings never refreshed) | `system/lib/hw/fingerprint.universal5420.so` | `patches/device/samsung/chagall-common/` 0005 (built) |
+| Enrolment pages say "swipe the home button" instead of "touch the sensor on the back" (v6) | `system/product/overlay/FingerprintSwipeSettings.apk` | `magisk/overlays/FingerprintSwipeSettings/`, built by `build-env/05a-build-overlays.sh` |
 | AudioFX: not touched (v5). v2-v4 hid it; the owner prefers it for headphones. It enables Equalizer + Bass Boost + Virtualizer per output by default - switch its **speaker** profile off, the hardware chain is tuned without it | - | - |
 
 `post-fs-data.sh` adds the JamesDSP library/effect to `audio_effects.xml` when the
 `ainur_jamesdsp` module is active, and writes the same content into JamesDSP's own copy of that
 file (it generates one from the stock config at install time) – so the two modules never disagree
 and nothing has to be edited by hand after (re)installing JamesDSP.
+
+**Fingerprint after upgrading to v6**: enrolments made with the old HAL can leave a "ghost" template
+in `/data/validity/finger.db` that Settings does not list (so it cannot be deleted there) and that
+spoils matching. If unlock keeps failing: delete all fingerprints in Settings, then as root
+`stop vendor.fps_hal; mv /data/validity/finger.db /data/validity/finger.db.old; start vendor.fps_hal`,
+and enrol again. It is a **swipe** sensor (home button): slow, straight swipes; a few rejected
+swipes before a match are normal (the matcher answers 601 for "not similar enough").
 
 Installing `chagall_fixes` marks the old single-purpose modules (`chagall_bt_sco_fix`,
 `chagall_mic_fix`, `chagall_voip_speaker`, `chagall_bt_sco_slave`) for removal.

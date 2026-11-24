@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <string name="security_settings_fingerprint_enroll_introduction_message">Just swipe a finger down over the home button to unlock your tablet, authorize purchases, or sign in to apps. Be careful whose fingerprints you add. Even one added print can do any of these things.\n\nNote: Your fingerprint may be less secure than a strong pattern or PIN.</string>
+    <string name="security_settings_fingerprint_enroll_find_sensor_title">Swipe the sensor</string>
+    <string name="security_settings_fingerprint_enroll_find_sensor_message">It’s the home button below the screen. Swipe your finger down over it.</string>
+    <string name="security_settings_fingerprint_enroll_start_title">Swipe the sensor</string>
+    <string name="security_settings_fingerprint_enroll_start_message">Swipe your finger down over the home button, slowly and straight, then lift it</string>
+    <string name="security_settings_fingerprint_enroll_repeat_title">Swipe again</string>
+    <string name="security_settings_fingerprint_enroll_repeat_message">Keep swiping to add the different parts of your fingerprint</string>
+    <string name="security_settings_fingerprint_enroll_touch_dialog_message">Swipe down over the home button below the screen. Use your index finger.</string>
+    <string name="security_settings_fingerprint_enroll_lift_touch_again">Lift your finger, then swipe again</string>
+</resources>

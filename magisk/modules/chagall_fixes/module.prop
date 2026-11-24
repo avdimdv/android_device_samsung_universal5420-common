@@ -1,6 +1,6 @@
 id=chagall_fixes
-name=Tab S 10.5 (SM-T800) audio + BT fixes
-version=v5
-versionCode=5
+name=Tab S 10.5 (SM-T800) audio, BT + fingerprint fixes
+version=v6
+versionCode=6
 author=avdim
-description=Galaxy Tab S 10.5 Wi-Fi, LineageOS 17.1 deathly: Bluetooth call audio, mic gain, VoIP to the speaker (no earpiece), working echo canceller config; speaker hardware EQ + limiter/loudness (WM5102, only with the hook-free kernel zip).
+description=Galaxy Tab S 10.5 Wi-Fi, LineageOS 17.1 deathly: Bluetooth call audio, mic gain, VoIP to the speaker (no earpiece), working echo canceller config; speaker hardware EQ + limiter/loudness (WM5102, only with the hook-free kernel zip); fingerprint unlock (fixed HAL) and "swipe" wording in the enrolment pages.
