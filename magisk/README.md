@@ -38,6 +38,11 @@ finger, and every swipe is matched against all stored prints: with one enrolment
 6 unlocked, with the same finger enrolled 3 times nearly every swipe did (2026-11-24; the
 successful unlocks matched slots 1, 2 and 3 alike). Loosening the matcher threshold from 1:100000
 to 1:50000 did not help (1 of 21) and was not adopted.
+v9 verified 2026-11-24: 5 prints of one finger stored, unlocks matched slots 1-4, no HAL restarts;
+still several swipes before the first match. Open: the v8 "replace an uncancelled operation"
+path fired twice right after boot and worked, but once the old worker then stayed in
+STATE_CANCEL for more than 3 s, so the next request got "Sensor is busy" (recovered by itself
+within a minute) - the worker is probably blocked in a secure-world call that ignores the abort.
 
 Installing `chagall_fixes` marks the old single-purpose modules (`chagall_bt_sco_fix`,
 `chagall_mic_fix`, `chagall_voip_speaker`, `chagall_bt_sco_slave`) for removal.
