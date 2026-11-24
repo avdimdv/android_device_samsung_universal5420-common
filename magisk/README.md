@@ -16,7 +16,7 @@ Sources for the modules built by `build-env/05-make-magisk-modules.sh` into `art
 | Speaker hardware EQ + limiter + loudness (WM5102: AIF1 → EQ1/2 (E1: −9/−3/0/+1/0 dB) → DRC1 (T1: +6 dB, ceiling −9 dBFS) → SPKOUT) – **only with our kernel** | same file, lines tagged `<!-- drc-speaker -->`; `post-fs-data.sh` strips them if `/sys/class/misc/wolfson_control` exists | chagall-common 0003, 0004 + `patches/kernel/samsung/exynos5420/0001` |
 | VoIP to speaker (no earpiece) | `system/vendor/etc/audio_policy_configuration.xml` | `configs/audio/audio_policy_configuration.xml` |
 | Working AEC/NS for VoIP (AOSP instead of broken LifeVibes) | `system/vendor/etc/audio_effects.xml` + `post-fs-data.sh` | `configs/audio/audio_effects.xml` |
-| Fingerprint unlock (v6, v7): the Validity HAL leaked its 128 KB secure ion buffer every session, reported every enrolment as failed-but-saved, sent garbage in "removed" (Settings never refreshed); v7 also fixes a hang after the 60 s enrolment timeout (system_server watchdog restart loop - **do not use v6**) and a crash when a new request arrived while the previous session was still closing | `system/lib/hw/fingerprint.universal5420.so` | `patches/device/samsung/chagall-common/` 0005 (built) |
+| Fingerprint unlock (v6-v8): the Validity HAL leaked its 128 KB secure ion buffer every session, reported every enrolment as failed-but-saved, sent garbage in "removed" (Settings never refreshed); v7 also fixes a hang after the 60 s enrolment timeout (system_server watchdog restart loop - **do not use v6**) and a crash when a new request arrived while the previous session was still closing; v8: when the framework starts a new request without cancelling the running one, the HAL stops the old one instead of answering "Sensor is busy" (seen as an instant enrolment "timeout" after "Add fingerprint") | `system/lib/hw/fingerprint.universal5420.so` | `patches/device/samsung/chagall-common/` 0005, 0006 (built) |
 | Enrolment pages say "swipe the home button" instead of "touch the sensor on the back" (v6) | `system/product/overlay/FingerprintSwipeSettings.apk` | `magisk/overlays/FingerprintSwipeSettings/`, built by `build-env/05a-build-overlays.sh` |
 | AudioFX: not touched (v5). v2-v4 hid it; the owner prefers it for headphones. It enables Equalizer + Bass Boost + Virtualizer per output by default - switch its **speaker** profile off, the hardware chain is tuned without it | - | - |
 
@@ -31,6 +31,12 @@ spoils matching. If unlock keeps failing: delete all fingerprints in Settings, t
 `stop vendor.fps_hal; mv /data/validity/finger.db /data/validity/finger.db.old; start vendor.fps_hal`,
 and enrol again. It is a **swipe** sensor (home button): slow, straight swipes; a few rejected
 swipes before a match are normal (the matcher answers 601 for "not similar enough").
+
+**Enrol the same finger in all 3 slots** (Settings allows 3). A swipe sees only a strip of the
+finger, and every swipe is matched against all stored prints: with one enrolment about 1 swipe in
+6 unlocked, with the same finger enrolled 3 times nearly every swipe did (2026-11-24; the
+successful unlocks matched slots 1, 2 and 3 alike). Loosening the matcher threshold from 1:100000
+to 1:50000 did not help (1 of 21) and was not adopted.
 
 Installing `chagall_fixes` marks the old single-purpose modules (`chagall_bt_sco_fix`,
 `chagall_mic_fix`, `chagall_voip_speaker`, `chagall_bt_sco_slave`) for removal.

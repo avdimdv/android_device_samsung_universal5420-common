@@ -1,0 +1,94 @@
+From 70ac29c03be6a1203998285faf5f16c9bf1c3d59 Mon Sep 17 00:00:00 2001
+From: avdim <avdimdv@gmail.com>
+Date: Tue, 24 Nov 2026 21:59:41 +0100
+Subject: [PATCH] chagall-common: fingerprint: a new request replaces an
+ uncancelled one
+
+FingerprintService sometimes starts the next client without calling
+cancel() for the running one: the old client is marked "already
+cancelled", the service waits 3 s for an ERROR_CANCELED that never comes
+("failed to respond to cancel") and then starts the new operation anyway.
+The HAL's worker was still scanning, so the new enroll/authenticate was
+refused with "Sensor is busy" - Settings showed an enrolment timeout right
+after "Add fingerprint", the lock screen lost a second of listening.
+
+enroll() and authenticate() now stop a still-running worker first (same
+bounded stop as cancel(), without the ERROR_CANCELED notice, which would
+reach the new client).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Change-Id: I1c19245254c85721002c312cce71432b36245e31
+---
+ hardware/fingerprint/fingerprint.c | 31 ++++++++++++++++++++++++++----
+ 1 file changed, 27 insertions(+), 4 deletions(-)
+
+diff --git a/hardware/fingerprint/fingerprint.c b/hardware/fingerprint/fingerprint.c
+index 26451ee..f5c7c7f 100755
+--- a/hardware/fingerprint/fingerprint.c
++++ b/hardware/fingerprint/fingerprint.c
+@@ -428,6 +428,8 @@ static int fingerprint_set_active_group(struct fingerprint_device *device, uint3
+     return 0;
+ }
+ 
++static void replace_running_session(const char *who);
++
+ static int fingerprint_authenticate(struct fingerprint_device *device,
+     uint64_t operation_id, __unused uint32_t gid)
+ {
+@@ -439,6 +441,7 @@ static int fingerprint_authenticate(struct fingerprint_device *device,
+     pthread_mutex_lock(&vdev->lock);
+ 
+     vdev->op_id = operation_id;
++    replace_running_session(__func__);
+     ret = vcs_start_authenticate(vdev);
+ 
+     pthread_mutex_unlock(&vdev->lock);
+@@ -486,6 +489,7 @@ static int fingerprint_enroll(struct fingerprint_device *device,
+         pthread_mutex_unlock(&vdev->lock);
+         return -1;
+     }
++    replace_running_session(__func__);
+     ret = vcs_start_enroll(vdev, timeout_sec);
+ 
+     pthread_mutex_unlock(&vdev->lock);
+@@ -519,10 +523,8 @@ static int fingerprint_post_enroll(struct fingerprint_device* device) {
+     return 0;
+ }
+ 
+-static int fingerprint_cancel(struct fingerprint_device *device) {
+-    ALOGV("----------------> %s ----------------->", __FUNCTION__);
+-    vcs_fingerprint_device_t* vdev = (vcs_fingerprint_device_t*)device;
+-    int ret = 0;
++/* Stop the enrol/authenticate worker, if any (bounded, about 3 s). Sends no notice. */
++static void stop_session(void) {
+     int flag = 0;
+ 
+     if (tz.timeout.timeout_thread) {
+@@ -546,6 +548,27 @@ static int fingerprint_cancel(struct fingerprint_device *device) {
+         if (get_tz_state() != STATE_IDLE)
+             ALOGE("cancel: worker did not stop within 3 s");
+     }
++}
++
++/* FingerprintService sometimes starts a new operation without calling cancel() for the
++ * running one (it marks the old client "already cancelled", waits 3 s for an ERROR_CANCELED
++ * that never comes - "failed to respond to cancel" - and moves on). The old worker was then
++ * still scanning and the new enroll/authenticate was refused as "Sensor is busy", which
++ * Settings shows as a timeout. A new request replaces the old operation instead. */
++static void replace_running_session(const char *who) {
++    int s = get_tz_state();
++    if (s == STATE_ENROLL || s == STATE_SCAN) {
++        ALOGW("%s: stopping an operation that was never cancelled (state %d)", who, s);
++        stop_session();
++    }
++}
++
++static int fingerprint_cancel(struct fingerprint_device *device) {
++    ALOGV("----------------> %s ----------------->", __FUNCTION__);
++    vcs_fingerprint_device_t* vdev = (vcs_fingerprint_device_t*)device;
++    int ret = 0;
++
++    stop_session();
+ 
+     // Not really an error, but framework expects us to send it.
+     send_error_notice(vdev, FINGERPRINT_ERROR_CANCELED);
