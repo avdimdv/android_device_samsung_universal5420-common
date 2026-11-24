@@ -8,3 +8,4 @@ system/vendor/etc/audio_effects.xml               device/samsung/universal5420-c
 audio_effects.base.xml                            device/samsung/universal5420-common/configs/audio/audio_effects.xml
 system/lib/hw/fingerprint.universal5420.so        out/target/product/chagallwifi/system/lib/hw/fingerprint.universal5420.so
 system/product/overlay/FingerprintSwipeSettings.apk  out/target/product/chagallwifi/magisk-overlays/FingerprintSwipeSettings.apk
+system/product/overlay/FingerprintFiveSlots.apk     out/target/product/chagallwifi/magisk-overlays/FingerprintFiveSlots.apk

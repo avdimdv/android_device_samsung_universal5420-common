@@ -1,0 +1,31 @@
+From 8598e03ca2b99a8c787e3c4cdaab2c79dfae93ac Mon Sep 17 00:00:00 2001
+From: avdim <avdimdv@gmail.com>
+Date: Tue, 24 Nov 2026 22:04:25 +0100
+Subject: [PATCH] chagall-common: allow 5 fingerprints per user
+
+The swipe sensor sees only a strip of the finger and each swipe is matched
+against all stored prints: with one enrolment about 1 swipe in 6 unlocked,
+with the same finger in 3 slots nearly every swipe did. The HAL stores 5
+(MAX_NUM_FINGERS) and the trustlet's match message has room for 30
+templates (stock libvfmtztransport vfmMatchImageToTemplates), so the old
+"VCS limits ... to 3" was Samsung's product choice, not a stack limit.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Change-Id: I7197207565be20273c94fc69e8f5b00dad3676f5
+---
+ overlay/frameworks/base/core/res/res/values/config.xml | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/overlay/frameworks/base/core/res/res/values/config.xml b/overlay/frameworks/base/core/res/res/values/config.xml
+index 69be900..1749a57 100644
+--- a/overlay/frameworks/base/core/res/res/values/config.xml
++++ b/overlay/frameworks/base/core/res/res/values/config.xml
+@@ -64,6 +64,6 @@
+          The user is forbidden from setting the brightness below this level. -->
+     <integer name="config_screenBrightnessSettingMinimum">2</integer>
+ 
+-    <!-- VCS limits the number of fingerprints per user to 3 -->
+-    <integer name="config_fingerprintMaxTemplatesPerUser">3</integer>
++    <!-- The swipe sensor needs the same finger enrolled several times; the HAL stores 5 -->
++    <integer name="config_fingerprintMaxTemplatesPerUser">5</integer>
+ </resources>

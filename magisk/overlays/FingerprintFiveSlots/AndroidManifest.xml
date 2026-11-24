@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Runtime resource overlay for the framework: allow 5 fingerprints instead of the ROM's 3.
+     The swipe sensor sees only a strip of the finger and every swipe is matched against all
+     stored prints, so enrolling the same finger several times is what makes unlock reliable.
+     The HAL stores 5 (MAX_NUM_FINGERS) and the trustlet message has room for 30 templates. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="org.lineageos.overlay.chagall.fingerprintslots">
+    <overlay android:targetPackage="android"
+        android:isStatic="true"
+        android:priority="10" />
+    <application android:hasCode="false" />
+</manifest>
