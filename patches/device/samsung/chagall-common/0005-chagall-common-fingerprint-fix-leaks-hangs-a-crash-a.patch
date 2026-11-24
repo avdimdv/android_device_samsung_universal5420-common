@@ -1,0 +1,510 @@
+From fa2a8108136de608dce5b9c5094d05f432cda6d6 Mon Sep 17 00:00:00 2001
+From: avdim <avdimdv@gmail.com>
+Date: Tue, 24 Nov 2026 19:45:12 +0100
+Subject: [PATCH] chagall-common: fingerprint: fix leaks, hangs, a crash and
+ enrol/remove reporting
+
+The Validity fingerprint HAL captured fine but unlocking never worked,
+deleting a fingerprint never refreshed Settings, and a 60 s enrolment
+timeout could hang the HAL and put system_server into a watchdog restart
+loop. Measured on an SM-T800:
+
+- vcs_uninit() leaked the 128 KB secure ion buffer (mmap, ion handle,
+  /dev/ion, /dev/s5p-smem) on every session. That filled the whole
+  "secdma" region (exactly 0x20000), so every later ion_alloc_fd failed
+  with ENOMEM and the HAL only limped on by reusing the first session's
+  stale fd. Free it; vcs_init() fails cleanly if allocation fails, and the
+  start functions reset the state on any setup failure.
+- vfmEnrollFinish was checked against vfmVendorDefinedOperationRsp instead
+  of vfmEnrollFinishRsp, so every enrolment logged an error and carried on.
+  A real failure now reports UNABLE_TO_PROCESS and stores nothing.
+  vfmPayloadBind's second call answers rc=5 here; the template is kept with
+  a warning (the payload is only released after a successful match). Enrol
+  error exits now close the secure session instead of returning early.
+- vcs_timeout() set STATE_CANCEL but never woke the capture thread, which
+  sleeps on sensor.cond until DRDY. Its wait loop spun forever, the next
+  cancel() blocked in pthread_join() on it, and system_server's watchdog
+  restarted the framework over and over. Wake the thread; every wait for
+  the worker is bounded (3 s) so the HAL can no longer block a binder call
+  forever.
+- The worker went to STATE_IDLE before closing its sessions, so a request
+  arriving right after a cancel found "TA already running", used half-freed
+  state and crashed (SIGSEGV in vcs_authenticate), or was refused as busy.
+  New STATE_EXIT: only vcs_uninit() sets STATE_IDLE, after everything is
+  closed; new requests wait up to 1 s for a session that is winding down.
+- send_remove_notice() left gid and remaining_templates uninitialised
+  (seen: gid=6, rem=69960371), so the framework's removal never completed.
+- The template table was cleared one slot short when reloading.
+- FPDBG step trace (ALOGV, off by default) for every secure-world command.
+
+With a clean template database this enrols and unlocks;
+vfmMatchImageToTemplates answers 601 for a swipe that does not match well
+enough.
+
+Change-Id: Ifcd324f048725df1ebd66559dae564687c5d952d
+---
+ hardware/fingerprint/fingerprint.c        |  24 ++--
+ hardware/fingerprint/fingerprint_common.h |   3 +-
+ hardware/fingerprint/fingerprint_tz.c     | 161 +++++++++++++++++-----
+ 3 files changed, 142 insertions(+), 46 deletions(-)
+
+diff --git a/hardware/fingerprint/fingerprint.c b/hardware/fingerprint/fingerprint.c
+index 1495ac9..26451ee 100755
+--- a/hardware/fingerprint/fingerprint.c
++++ b/hardware/fingerprint/fingerprint.c
+@@ -98,7 +98,7 @@ void sensor_process_signal(int signum) {
+         tz.timeout.timeout_thread = 0;
+     }
+     pthread_mutex_lock(&sensor.lock);
+-    if (get_tz_state() != STATE_IDLE && get_tz_state() != STATE_CANCEL)
++    if (get_tz_state() == STATE_ENROLL || get_tz_state() == STATE_SCAN)
+         sensor.signal = true;
+     ioctl(sensor.fd, VFSSPI_IOCTL_SET_DRDY_INT, &flag);
+     pthread_cond_signal(&sensor.cond);
+@@ -147,7 +147,7 @@ int db_convert_old_db(vcs_fingerprint_device_t* vdev) {
+     char cmd[MAX_DATABASE_CMD];
+     int idx = 0;
+ 
+-    memset(tz.finger, 0, MAX_NUM_FINGERS * sizeof(finger_t));
++    memset(tz.finger, 0, sizeof(tz.finger));
+     ret = sqlite3_open(SAMSUNG_FP_DB_PATH, &db);
+     if (ret != SQLITE_OK) {
+         ALOGE("Open samsung finger database failed!");
+@@ -211,7 +211,7 @@ int db_read_to_tz(void* device) {
+         return db_convert_old_db(vdev);
+     }
+ 
+-    memset(tz.finger, 0, MAX_NUM_FINGERS * sizeof(finger_t));
++    memset(tz.finger, 0, sizeof(tz.finger));
+     sprintf(cmd, "select * from gid_%d", vdev->active_gid);
+     sqlite3_prepare(vdev->db, cmd, -1, &stat, 0);
+     while(1) {
+@@ -385,9 +385,15 @@ void send_remove_notice(void* device, int fid) {
+     ALOGV("----------------> %s ----------------->fid=%d", __FUNCTION__, fid);
+     vcs_fingerprint_device_t* vdev = (vcs_fingerprint_device_t*)device;
+ 
++    /* gid and remaining_templates used to be left uninitialised (seen: gid=6,
++     * rem=69960371), so the framework's RemovalClient never saw "0 remaining" and
++     * Settings did not refresh after deleting a fingerprint. */
+     fingerprint_msg_t msg;
++    memset(&msg, 0, sizeof(msg));
+     msg.type = FINGERPRINT_TEMPLATE_REMOVED;
+     msg.data.removed.finger.fid = fid;
++    msg.data.removed.finger.gid = vdev->active_gid;
++    msg.data.removed.remaining_templates = vcs_get_enrolled_finger_num();
+ 
+     pthread_mutex_lock(&vdev->lock);
+     vdev->device.notify(&msg);
+@@ -526,17 +532,19 @@ static int fingerprint_cancel(struct fingerprint_device *device) {
+         pthread_join(tz.timeout.timeout_thread, NULL);
+         tz.timeout.timeout_thread = 0;
+     }
+-    if (get_tz_state() != STATE_IDLE && get_tz_state() != STATE_CANCEL) {
++    if (get_tz_state() == STATE_ENROLL || get_tz_state() == STATE_SCAN) {
+         set_tz_state(STATE_CANCEL);
+         ioctl(sensor.fd, VFSSPI_IOCTL_SET_DRDY_INT, &flag);
+         pthread_mutex_lock(&sensor.lock);
+         pthread_cond_signal(&sensor.cond);
+         pthread_mutex_unlock(&sensor.lock);
+-        while (1) {
++        /* Bounded: cancel() runs on a binder thread that system_server waits on; an
++         * endless wait here makes its watchdog kill and restart the whole framework. */
++        int waited;
++        for (waited = 0; waited < 30 && get_tz_state() != STATE_IDLE; waited++)
+             usleep(100000);
+-            if (tz.state == STATE_IDLE)
+-                break;
+-        }
++        if (get_tz_state() != STATE_IDLE)
++            ALOGE("cancel: worker did not stop within 3 s");
+     }
+ 
+     // Not really an error, but framework expects us to send it.
+diff --git a/hardware/fingerprint/fingerprint_common.h b/hardware/fingerprint/fingerprint_common.h
+index e5b64e8..63067b4 100644
+--- a/hardware/fingerprint/fingerprint_common.h
++++ b/hardware/fingerprint/fingerprint_common.h
+@@ -34,7 +34,8 @@ typedef enum worker_state_t {
+     STATE_IDLE = 0,
+     STATE_ENROLL,
+     STATE_SCAN,
+-    STATE_CANCEL
++    STATE_CANCEL,
++    STATE_EXIT      /* worker winding down; only vcs_uninit() makes it STATE_IDLE */
+ } worker_state_t;
+ 
+ typedef struct vcs_sensor_t {
+diff --git a/hardware/fingerprint/fingerprint_tz.c b/hardware/fingerprint/fingerprint_tz.c
+index bed9766..c8678ec 100644
+--- a/hardware/fingerprint/fingerprint_tz.c
++++ b/hardware/fingerprint/fingerprint_tz.c
+@@ -33,6 +33,10 @@
+ 
+ #include <cutils/log.h>
+ 
++/* Step trace for the capture/auth/enrol paths. Off by default (LOG_NDEBUG compiles ALOGV out);
++ * switch to ALOGI to see every secure-world command and its return code. */
++#define FPDBG(fmt, ...) ALOGV("FPDBG " fmt, ##__VA_ARGS__)
++
+ #include <sys/types.h>
+ #include <sys/stat.h>
+ #include <dlfcn.h>
+@@ -84,14 +88,20 @@ int vcs_update_cal_data() {
+     return 0;
+ }
+ 
++/* STATE_EXIT = the worker is winding down. It used to go straight to STATE_IDLE here, before
++ * the worker had closed its sessions and freed its buffers, so a new request arriving in that
++ * window found "securefp TA is already running" and used half-freed state (SIGSEGV in
++ * vcs_authenticate, seen 2026-11-24), or was refused as busy. Only the worker's own exit path
++ * (vcs_uninit) sets STATE_IDLE now. */
+ int vcs_check_state() {
+-    if (get_tz_state() == STATE_IDLE)
++    worker_state_t s = get_tz_state();
++    if (s == STATE_IDLE || s == STATE_EXIT)
+         return 1;
+-    if (get_tz_state() == STATE_CANCEL) {
++    if (s == STATE_CANCEL) {
+         tz.fp_wsm->cmd = vfmCaptureAbort;
+         mcNotify(&tz.ta_session);
+         mcWaitNotification(&tz.ta_session, MC_INFINITE_TIMEOUT);
+-        set_tz_state(STATE_IDLE);
++        set_tz_state(STATE_EXIT);
+         return 1;
+     }
+     return 0;
+@@ -115,6 +125,7 @@ int vcs_start_capture(void *vdev, time_t t) {
+     tz.g_addrs.input_buf[25] = 0x12;
+     mcNotify(&tz.ta_session);
+     mcWaitNotification(&tz.ta_session, MC_INFINITE_TIMEOUT);
++    FPDBG("CaptureStart rc=%d cmd=0x%x state=%d", tz.fp_wsm->return_code, tz.fp_wsm->return_cmd, get_tz_state());
+     if ((tz.fp_wsm->return_code != 0) || (tz.fp_wsm->return_cmd != vfmCaptureStartRsp)) {
+         ALOGE("Send vfmCaptureStart error");
+         return -1;
+@@ -125,11 +136,13 @@ int vcs_start_capture(void *vdev, time_t t) {
+     sensor_capture_start();
+     pthread_mutex_unlock(&sensor.lock);
+ 
++    FPDBG("waiting for DRDY");
+     pthread_mutex_lock(&sensor.lock);
+     while ((!vcs_check_state()) && !sensor.signal) {
+         pthread_cond_wait(&sensor.cond, &sensor.lock);
+     }
+     pthread_mutex_unlock(&sensor.lock);
++    FPDBG("DRDY wait done signal=%d state=%d", sensor.signal, get_tz_state());
+     if (vcs_check_state()) {
+         return -1;
+     }
+@@ -139,8 +152,10 @@ int vcs_start_capture(void *vdev, time_t t) {
+     }
+     pthread_mutex_unlock(&sensor.lock);
+ 
++    int reads = 0, last_status = -1;
+     while(1) {
+         if (vcs_check_state()) {
++            FPDBG("ReadData loop left by state=%d after %d reads", get_tz_state(), reads);
+             return -1;
+         }
+         tz.fp_wsm->cmd = vfmCaptureReadData;
+@@ -149,10 +164,15 @@ int vcs_start_capture(void *vdev, time_t t) {
+         tz.fp_wsm->output.addr = tz.g_addrs.output_addr;
+         mcNotify(&tz.ta_session);
+         mcWaitNotification(&tz.ta_session, MC_INFINITE_TIMEOUT);
++        reads++;
+         if ((tz.fp_wsm->return_code != 0) || (tz.fp_wsm->return_cmd != vfmCaptureReadDataRsp)) {
+-            ALOGE("Send vfmCaptureReadData error");
++            ALOGE("Send vfmCaptureReadData error rc=%d cmd=0x%x (read %d)", tz.fp_wsm->return_code, tz.fp_wsm->return_cmd, reads);
+             continue;
+         }
++        if (tz.g_addrs.output_buf[0] != last_status || reads == 1) {
++            FPDBG("ReadData #%d status=%d", reads, tz.g_addrs.output_buf[0]);
++            last_status = tz.g_addrs.output_buf[0];
++        }
+         if (tz.g_addrs.output_buf[0] == 2) {
+             ALOGV("User's finger removed from sensor");
+             break;
+@@ -171,6 +191,7 @@ int vcs_start_capture(void *vdev, time_t t) {
+     tz.fp_wsm->output.addr = tz.g_addrs.output_addr;
+     mcNotify(&tz.ta_session);
+     mcWaitNotification(&tz.ta_session, MC_INFINITE_TIMEOUT);
++    FPDBG("ProcessData rc=%d cmd=0x%x after %d reads", tz.fp_wsm->return_code, tz.fp_wsm->return_cmd, reads);
+     if (tz.fp_wsm->return_cmd != vfmCaptureProcessDataRsp) {
+         ALOGE("Send vfmCaptureProcessData error");
+         return -1;
+@@ -202,14 +223,17 @@ void* vcs_authenticate(void* vdev) {
+     tz.fp_wsm->input.len = 0;
+     tz.fp_wsm->output.addr = tz.g_addrs.output_addr;
+     tz.fp_wsm->output.len = 0x4;
++    FPDBG("auth thread start, enrolled=%d", vcs_get_enrolled_finger_num());
+     mcNotify(&tz.ta_session);
+     mcWaitNotification(&tz.ta_session, MC_INFINITE_TIMEOUT);
++    FPDBG("vendorUnknown0 rc=%d cmd=0x%x", tz.fp_wsm->return_code, tz.fp_wsm->return_cmd);
+     if((tz.fp_wsm->return_code != 0) || (tz.fp_wsm->return_cmd != vfmVendorDefinedOperationRsp)) {
+         ALOGE("%s:Send vendor unknown 0 cmd error", __FUNCTION__);
+     }
+ 
+     while (get_tz_state() == STATE_SCAN) {
+         ret = vcs_start_capture(vdev, 0);
++        FPDBG("auth capture ret=%d state=%d", ret, get_tz_state());
+         if (ret == -1)
+             goto out;
+         tz.fp_wsm->cmd = vfmMatchImageToTemplates;
+@@ -234,8 +258,10 @@ void* vcs_authenticate(void* vdev) {
+         tz.fp_wsm->output.addr = tz.g_addrs.output_addr;
+         tz.fp_wsm->ext_output.len = 0x3000;
+         tz.fp_wsm->ext_output.addr = tz.g_ext_addrs.output_addr;
++        FPDBG("Match: %d templates", len);
+         mcNotify(&tz.ta_session);
+         mcWaitNotification(&tz.ta_session, MC_INFINITE_TIMEOUT);
++        FPDBG("Match rc=%d cmd=0x%x idx_out=%d", tz.fp_wsm->return_code, tz.fp_wsm->return_cmd, tz.g_addrs.output_buf[80]);
+         if (tz.fp_wsm->return_cmd != vfmMatchImageToTemplatesRsp) {
+             ALOGE("%s:send vfmMatchImageToTemplates error", __FUNCTION__);
+             send_error_notice(vdev, FINGERPRINT_ERROR_UNABLE_TO_PROCESS);
+@@ -268,12 +294,14 @@ void* vcs_authenticate(void* vdev) {
+         tz.fp_wsm->output.addr = tz.g_addrs.output_addr;
+         mcNotify(&tz.ta_session);
+         mcWaitNotification(&tz.ta_session, MC_INFINITE_TIMEOUT);
++        FPDBG("PayloadRelease rc=%d cmd=0x%x fingerindex=%d", tz.fp_wsm->return_code, tz.fp_wsm->return_cmd, fingerindex);
+         break;
+     }
++    FPDBG("auth thread end, fingerindex=%d state=%d", fingerindex, get_tz_state());
+ out:
++    set_tz_state(STATE_EXIT);
+     sensor_uninit();
+-    vcs_uninit();
+-    set_tz_state(STATE_IDLE);
++    vcs_uninit();   /* sets STATE_IDLE last */
+     if (fingerindex) {
+         send_authenticated_notice(vdev, fingerindex);
+     }
+@@ -310,9 +338,8 @@ void* vcs_enroll(void* vdev) {
+     mcWaitNotification(&tz.ta_session, MC_INFINITE_TIMEOUT);
+     if((tz.fp_wsm->return_code != 0) || (tz.fp_wsm->return_cmd != vfmEnrollBeginRsp)) {
+         ALOGE("send EnrollBegin error");
+-        set_tz_state(STATE_IDLE);
+         send_error_notice(vdev, FINGERPRINT_ERROR_UNABLE_TO_PROCESS);
+-        return NULL;
++        goto out;
+     }
+     tz.fp_wsm->cmd = vfmVendorDefinedOperation;
+     tz.fp_wsm->vendor_cmd = vendorUnknownA;
+@@ -324,9 +351,8 @@ void* vcs_enroll(void* vdev) {
+     mcWaitNotification(&tz.ta_session, MC_INFINITE_TIMEOUT);
+     if((tz.fp_wsm->return_code != 0) || (tz.fp_wsm->return_cmd != vfmVendorDefinedOperationRsp)) {
+         ALOGE("send vendorUnknownA error");
+-        set_tz_state(STATE_IDLE);
+         send_error_notice(vdev, FINGERPRINT_ERROR_UNABLE_TO_PROCESS);
+-        return NULL;
++        goto out;
+     }
+     while (get_tz_state() == STATE_ENROLL) {
+         ret = vcs_start_capture(vdev, 0);
+@@ -339,9 +365,8 @@ void* vcs_enroll(void* vdev) {
+         mcWaitNotification(&tz.ta_session, MC_INFINITE_TIMEOUT);
+         if (tz.fp_wsm->return_cmd != vfmEnrollAddImageRsp) {
+             ALOGE("%s:send vfmEnrollAddImage error", __FUNCTION__);
+-            set_tz_state(STATE_IDLE);
+             send_error_notice(vdev, FINGERPRINT_ERROR_UNABLE_TO_PROCESS);
+-            return NULL;
++            goto out;
+         }
+         if (tz.fp_wsm->return_code != 0) {
+             send_acquired_notice(vdev, tz.fp_wsm->return_code);
+@@ -364,8 +389,13 @@ void* vcs_enroll(void* vdev) {
+     memcpy(tz.g_addrs.input_buf, &tz.auth_session_token, AUTH_SESSION_TOKEN_LENGTH);
+     mcNotify(&tz.ta_session);
+     mcWaitNotification(&tz.ta_session, MC_INFINITE_TIMEOUT);
+-    if((tz.fp_wsm->return_code != 0) || (tz.fp_wsm->return_cmd != vfmVendorDefinedOperationRsp)) {
+-        ALOGE("Send vfmEnrollFinish error");
++    FPDBG("EnrollFinish rc=%d cmd=0x%x", tz.fp_wsm->return_code, tz.fp_wsm->return_cmd);
++    /* The reply to vfmEnrollFinish is vfmEnrollFinishRsp - the old check compared against
++     * vfmVendorDefinedOperationRsp and logged an error for every enrolment, then carried on. */
++    if((tz.fp_wsm->return_code != 0) || (tz.fp_wsm->return_cmd != vfmEnrollFinishRsp)) {
++        ALOGE("Send vfmEnrollFinish error rc=%d cmd=0x%x", tz.fp_wsm->return_code, tz.fp_wsm->return_cmd);
++        send_error_notice(vdev, FINGERPRINT_ERROR_UNABLE_TO_PROCESS);
++        goto out;
+     }
+     memcpy(&tz.finger[idx].data, tz.g_addrs.output_buf, FINGER_DATA_MAX_LENGTH);
+     for (i = 0; i < 2; i++) {
+@@ -383,9 +413,13 @@ void* vcs_enroll(void* vdev) {
+         }
+         mcNotify(&tz.ta_session);
+         mcWaitNotification(&tz.ta_session, MC_INFINITE_TIMEOUT);
++        FPDBG("PayloadBind #%d rc=%d cmd=0x%x", i, tz.fp_wsm->return_code, tz.fp_wsm->return_cmd);
+     }
++    /* The second bind call answers rc=5 on this device (the first one succeeds). The payload is
++     * only handed back via vfmPayloadRelease after a successful match - matching itself uses the
++     * template from vfmEnrollFinish - so keep the template and only warn. */
+     if ((tz.fp_wsm->return_code != 0) || (tz.fp_wsm->return_cmd != vfmPayloadBindRsp)) {
+-        ALOGE("Send vfmPayloadBind error");
++        ALOGW("vfmPayloadBind rc=%d cmd=0x%x - keeping the template", tz.fp_wsm->return_code, tz.fp_wsm->return_cmd);
+     }
+     memcpy(&tz.finger[idx].payload, tz.g_addrs.output_buf, PAYLOAD_MAX_LENGTH);
+     tz.finger[idx].exist = true;
+@@ -413,9 +447,10 @@ void* vcs_enroll(void* vdev) {
+     }
+ #endif
+ out:
+-    set_tz_state(STATE_IDLE);
++    set_tz_state(STATE_EXIT);
+     sensor_uninit();
+-    vcs_uninit();
++    vcs_uninit();   /* sets STATE_IDLE last, after everything is closed */
++    FPDBG("enroll thread end");
+     return NULL;
+ }
+ 
+@@ -434,50 +469,70 @@ void* vcs_timeout(void* vdev) {
+     if (ret == ETIMEDOUT) {
+         ALOGI("Enroll timeout! Exit!");
+         int flag = 0;
+-        if (get_tz_state() != STATE_IDLE && get_tz_state() != STATE_CANCEL) {
++        if (get_tz_state() == STATE_ENROLL || get_tz_state() == STATE_SCAN) {
+             set_tz_state(STATE_CANCEL);
+             ioctl(sensor.fd, VFSSPI_IOCTL_SET_DRDY_INT, &flag);
+-            while (1) {
++            /* Wake the capture thread: it sleeps on sensor.cond until DRDY, and without a
++             * finger no DRDY ever comes. Without this signal the enrol thread never saw
++             * STATE_CANCEL, this loop spun forever, and the next cancel() blocked in
++             * pthread_join() on this thread - which hung the HAL and put system_server
++             * into a watchdog restart loop (seen 2026-11-24). */
++            pthread_mutex_lock(&sensor.lock);
++            pthread_cond_signal(&sensor.cond);
++            pthread_mutex_unlock(&sensor.lock);
++            int waited;
++            for (waited = 0; waited < 30 && get_tz_state() != STATE_IDLE; waited++)
+                 usleep(100000);
+-                if (get_tz_state() == STATE_IDLE)
+-                    break;
+-            }
++            if (get_tz_state() != STATE_IDLE)
++                ALOGE("enroll timeout: worker did not stop within 3 s");
+         }
+         send_error_notice(vdev, FINGERPRINT_ERROR_TIMEOUT);
+     }
+     return NULL;
+ }
+ 
++/* A previous worker may still be winding down (STATE_CANCEL/STATE_EXIT): give it up to 1 s. */
++static int wait_for_idle(const char *who) {
++    int times;
++    for (times = 0; times < 10 && get_tz_state() != STATE_IDLE; times++)
++        usleep(100000);
++    if (get_tz_state() != STATE_IDLE) {
++        ALOGE("%s:Sensor is busy! (state %d)", who, get_tz_state());
++        return -1;
++    }
++    if (times) FPDBG("%s waited %d ms for the previous session", who, times * 100);
++    return 0;
++}
++
+ int vcs_start_authenticate(void *vdev) {
+-    int times = 0;
+-    for (times = 0; times < 5; times++)
+-        if (get_tz_state() != STATE_IDLE) {
+-            ALOGE("%s:Sensor is busy!", __FUNCTION__);
+-            if (times < 4) {
+-                usleep(100000);
+-                continue;
+-            }
+-            return -1;
+-        }
++    if (wait_for_idle(__FUNCTION__))
++        return -1;
+     set_tz_state(STATE_SCAN);
+     int ret = 0;
+ 
+     sensor_init();
+ 
+     ret = vcs_init();
+-    if (ret) return ret;
++    if (ret) {
++        /* no worker thread will ever set STATE_IDLE - do it here, or every later request
++         * is refused as "busy" and cancel() waits for a thread that does not exist */
++        sensor_uninit();
++        set_tz_state(STATE_IDLE);
++        return ret;
++    }
+     ret = pthread_create(&tz.auth_thread, NULL, vcs_authenticate, vdev);
+     if (ret) {
+         ALOGE("Can't create authenticate thread!!");
++        vcs_uninit();
++        sensor_uninit();
++        set_tz_state(STATE_IDLE);
+     }
+     return ret;
+ }
+ 
+ int vcs_start_enroll(void *vdev, uint32_t timeout) {
+-    if (get_tz_state() != STATE_IDLE) {
+-        ALOGE("%s:Sensor is busy!", __FUNCTION__);
++    if (wait_for_idle(__FUNCTION__))
+         return -1;
+-    }
+     set_tz_state(STATE_ENROLL);
+     int ret = 0;
+ 
+@@ -485,11 +540,16 @@ int vcs_start_enroll(void *vdev, uint32_t timeout) {
+ 
+     ret = vcs_init();
+     if (ret) {
++        sensor_uninit();
++        set_tz_state(STATE_IDLE);
+         return ret;
+     }
+     ret = pthread_create(&tz.enroll_thread, NULL, vcs_enroll, vdev);
+     if (ret) {
+         ALOGE("Can't create enroll thread!!");
++        vcs_uninit();
++        sensor_uninit();
++        set_tz_state(STATE_IDLE);
+         return ret;
+     }
+     if (timeout) {
+@@ -685,6 +745,22 @@ int vcs_uninit() {
+     tz.g_ext_addrs.output_addr = 0;
+     free(tz.g_ext_addrs.output_buf);
+ 
++    /* Give the 128 KB secure ion buffer back. It used to be leaked on every session, which left
++     * the whole "secdma" region (exactly 0x20000) occupied: every later ion_alloc_fd failed with
++     * ENOMEM and the code only kept working by reusing the stale fd of the first session. */
++    if (tz.ion_buf != NULL && tz.ion_buf != MAP_FAILED)
++        munmap(tz.ion_buf, 0x20000);
++    tz.ion_buf = NULL;
++    if (tz.secfd_info.fd_ion_handle > 0)
++        close(tz.secfd_info.fd_ion_handle);
++    tz.secfd_info.fd_ion_handle = -1;
++    if (tz.fd_ion > 0)
++        close(tz.fd_ion);
++    tz.fd_ion = -1;
++    if (tz.fd_crypt_mem > 0)
++        close(tz.fd_crypt_mem);
++    tz.fd_crypt_mem = -1;
++
+     mcCloseSession(&tz.dr_session);
+     mcCloseSession(&tz.ta_session);
+     mcFreeWsm(MC_DEVICE_ID_DEFAULT, tz.drv_wsm);
+@@ -778,8 +854,19 @@ int vcs_init() {
+     tz.fd_crypt_mem = open("/dev/s5p-smem", O_RDWR);
+     tz.fd_ion = open("/dev/ion", O_RDWR);
+ 
+-    ion_alloc_fd(tz.fd_ion, 0x20000, 0, 0x10, 0x80000, &tz.secfd_info.fd_ion_handle);
++    tz.secfd_info.fd_ion_handle = -1;
++    ret = ion_alloc_fd(tz.fd_ion, 0x20000, 0, 0x10, 0x80000, &tz.secfd_info.fd_ion_handle);
++    FPDBG("secure ion alloc ret=%d fd=%d", ret, tz.secfd_info.fd_ion_handle);
++    if (ret < 0 || tz.secfd_info.fd_ion_handle < 0) {
++        ALOGE("Allocating the secure ion buffer failed: %d", ret);
++        return -1;
++    }
+     tz.ion_buf = mmap(0, 0x20000, 3, 1, tz.secfd_info.fd_ion_handle, 0);
++    if (tz.ion_buf == MAP_FAILED) {
++        ALOGE("Mapping the secure ion buffer failed: %d", errno);
++        tz.ion_buf = NULL;
++        return -1;
++    }
+ 
+     //ioctl get phy address magic
+     ioctl(tz.fd_crypt_mem, 0xc0085308, &tz.secfd_info);
+-- 
+2.25.1
+
