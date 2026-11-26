@@ -1,0 +1,73 @@
+#!/sbin/sh
+# Key migration: HazouPH's LineageOS 17.1 (chagallwifi) -> this ROM (AOSP test keys).
+#
+# HazouPH signs his builds with his own keys; this ROM uses the public AOSP test keys. Android
+# stores the signing certificate of every installed app in /data/system/packages.xml and refuses
+# to boot cleanly when the system apps suddenly carry a different one. This zip replaces his five
+# certificates (platform, shared, media, networkstack, release) in that file with the matching
+# test-key certificates, so the switch keeps all data. Flash it in TWRP right AFTER the ROM zip
+# and BEFORE the first boot. It changes nothing else, keeps a backup, and does nothing when the
+# file does not contain HazouPH's keys (already migrated, clean install, other ROM).
+#
+# Undo: restore /data/system/packages.xml from packages.xml.before-key-migration, then flash
+# HazouPH's ROM again.
+#
+# Test on a PC:  KM_PACKAGES=/path/to/packages.xml sh update-binary
+OUTFD=$2
+KT=${TMPDIR:-/tmp}
+ui() { if [ -n "$OUTFD" ] && [ -e "/proc/self/fd/$OUTFD" ]; then echo "ui_print $1" > "/proc/self/fd/$OUTFD"; echo "ui_print" > "/proc/self/fd/$OUTFD"; else echo "$1"; fi; }
+
+ui "Key migration: HazouPH keys -> AOSP test keys"
+if [ -z "$KM_PACKAGES" ]; then
+  mount /data 2>/dev/null
+  F=/data/system/packages.xml
+else
+  F=$KM_PACKAGES
+fi
+[ -f "$F" ] || { ui "! $F not found (data wiped or not mounted) - nothing to do"; exit 0; }
+
+# @PAIRS@ is replaced by build-env/05b-make-key-migration.sh with lines:  role old_hex new_hex
+PAIRS="
+@PAIRS@
+"
+
+
+echo "$PAIRS" | while read role old new; do
+  [ -n "$role" ] || continue
+  grep -q "key=\"$old\"" "$F" && echo "$role"
+done > $KT/km-found
+found=$(grep -c . $KT/km-found)
+if [ "$found" = 0 ]; then
+  ui "No HazouPH keys in packages.xml - nothing to do."
+  exit 0
+fi
+ui "Found HazouPH keys: $(tr '\n' ' ' < $KT/km-found)"
+
+B="$F.before-key-migration"
+[ -f "$B" ] || cp -p "$F" "$B" || { ui "! could not back up $F - aborted, nothing changed"; exit 1; }
+ui "Backup: $B"
+
+T=$KT/km-packages.xml
+cp "$F" "$T" || { ui "! copy failed - aborted, nothing changed"; exit 1; }
+echo "$PAIRS" | while read role old new; do
+  [ -n "$role" ] || continue
+  sed -i "s/key=\"$old\"/key=\"$new\"/g" "$T"
+done
+
+echo "$PAIRS" | while read role old new; do
+  [ -n "$role" ] || continue
+  grep -q "key=\"$old\"" "$T" && echo "$role"
+done > $KT/km-left
+if [ -s $KT/km-left ]; then
+  ui "! replacement failed for: $(tr '\n' ' ' < $KT/km-left) - aborted, nothing changed"
+  exit 1
+fi
+# The file only differs in those certificate values; a size change of a few KB is expected.
+[ "$(wc -l < "$T")" = "$(wc -l < "$F")" ] || { ui "! line count changed - aborted, nothing changed"; exit 1; }
+
+# Write in place: keeps owner, mode and SELinux label of the original file.
+cat "$T" > "$F" && sync || { ui "! write failed - restore $B by hand"; exit 1; }
+rm -f "$T" $KT/km-found $KT/km-left
+[ -z "$KM_PACKAGES" ] && rm -f /data/system/packages-backup.xml
+ui "Done. Wipe Dalvik/ART cache, then reboot."
+exit 0

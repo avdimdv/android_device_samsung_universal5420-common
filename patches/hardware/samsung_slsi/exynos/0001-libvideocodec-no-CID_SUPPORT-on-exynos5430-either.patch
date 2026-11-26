@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: alpha-build <alpha-build@localhost>
+Date: Thu, 12 Nov 2026 16:20:39 +0100
+Subject: [PATCH] libvideocodec: no CID_SUPPORT on exynos5430 either
+
+Same MFC generation as exynos5433: the kernel headers do not have the
+newer MFC control ids.
+
+Change-Id: I2cdbbe62ad1bafeabeb6764ba82cbdc6fbef4b90
+---
+ libvideocodec/Android.mk | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/libvideocodec/Android.mk b/libvideocodec/Android.mk
+index 741067d..c5c1ecc 100644
+--- a/libvideocodec/Android.mk
++++ b/libvideocodec/Android.mk
+@@ -28,7 +28,7 @@ endif
+ 
+ # since 3.10 kernel
+ ifneq ($(filter-out 3.4, $(TARGET_LINUX_KERNEL_VERSION)),)
+-ifneq ($(TARGET_SOC), exynos5433)
++ifeq ($(filter exynos5430 exynos5433,$(TARGET_SOC)),)
+ LOCAL_CFLAGS += -DCID_SUPPORT
+ endif
+ LOCAL_CFLAGS += -DUSE_DEFINE_H264_SEI_TYPE
+-- 
+2.25.1
+

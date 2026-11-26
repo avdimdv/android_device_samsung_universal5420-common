@@ -1,0 +1,43 @@
+From e61697af285387955d1c8d8428e866bae5002f73 Mon Sep 17 00:00:00 2001
+From: alpha-build <alpha-build@localhost>
+Date: Mon, 23 Nov 2026 21:40:59 +0100
+Subject: [PATCH] libcsc: reject SW conversion when plane pointers are null
+
+The GSC fallback path in the camera HAL and the OMX plugin can call csc_convert() with
+buffers registered only as fds (planes NULL) when the GSC node is busy. Every
+conv_sw_src_* handler then does planes[Y] + offset arithmetic and memmoves into the
+result: SIGSEGV at ~0x1fe033 (NULL + one 1920x1088 Y plane) in media.codec or the
+camera provider - the real cause of the "recording stops instantly" failures.
+
+Change-Id: Ib183d3818e6142eb739c093d4de27c471872768b
+---
+ libcsc/csc.c | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/libcsc/csc.c b/libcsc/csc.c
+index 8f1a2b4..a79c98f 100644
+--- a/libcsc/csc.c
++++ b/libcsc/csc.c
+@@ -618,6 +618,22 @@ static CSC_ERRORCODE conv_sw(
+ {
+     CSC_ERRORCODE ret = CSC_ErrorNone;
+ 
++    /*
++     * Callers fall back to SW conversion when the GSC node is busy. In that fallback the
++     * plane pointers can arrive NULL (buffers registered as fds only), and every handler
++     * below does planes[Y] + offset arithmetic unconditionally: SIGSEGV in memmove at a
++     * small address, killing media.codec / camera provider ("recording stops instantly").
++     */
++    if ((handle->src_buffer.planes[CSC_Y_PLANE] == NULL) ||
++        (handle->dst_buffer.planes[CSC_Y_PLANE] == NULL)) {
++        ALOGE("%s:: null plane (src %p dst %p, src mem_type %d, dst mem_type %d)",
++              __func__,
++              handle->src_buffer.planes[CSC_Y_PLANE],
++              handle->dst_buffer.planes[CSC_Y_PLANE],
++              handle->src_buffer.mem_type, handle->dst_buffer.mem_type);
++        return CSC_Error;
++    }
++
+     switch (handle->src_format.color_format) {
+     case HAL_PIXEL_FORMAT_EXYNOS_YCbCr_420_SP_M_TILED:
+     case HAL_PIXEL_FORMAT_EXYNOS_YCbCr_420_SPN_TILED:

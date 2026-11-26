@@ -1,0 +1,47 @@
+From 58a826b3a38e00a6a6c50d2a07749609f298346b Mon Sep 17 00:00:00 2001
+From: avdim <avdimdv@gmail.com>
+Date: Sun, 22 Nov 2026 23:51:08 +0100
+Subject: [PATCH 1/4] CameraSource: accept nv21 video-frame-format from Samsung
+ HALs
+
+The Exynos HAL reports video-frame-format as "nv21", which AOSP's
+getColorFormat() did not know, so MediaRecorder aborted mediaserver with
+CHECK(!"Unknown color format").
+
+The recording buffers are linear NV21 (Y plane + interleaved VU plane).
+Mapping nv21 to OMX_COLOR_FormatYUV420SemiPlanar made the Exynos OMX
+encoder read them as NV12 (UV), so recordings came out with the chroma
+planes swapped (blue wood, orange sky). Return Samsung's own
+OMX_SEC_COLOR_FormatNV21Linear (0x7F000011, Exynos_OMX_Def.h) instead:
+the Exynos encoder lists it as a supported input format and feeds the
+buffers to MFC as NV21M, so no copy or in-place swap is needed and the
+preview (which shares the recording buffers) is left untouched.
+
+Device-specific: a non-Exynos encoder would reject this format.
+
+Change-Id: Ic19153164345c77aafe89d25070393294b7ff19a
+---
+ media/libstagefright/CameraSource.cpp | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/media/libstagefright/CameraSource.cpp b/media/libstagefright/CameraSource.cpp
+index d7444cbbeb..c844bc10c5 100644
+--- a/media/libstagefright/CameraSource.cpp
++++ b/media/libstagefright/CameraSource.cpp
+@@ -146,6 +146,16 @@ static int32_t getColorFormat(const char* colorFormat) {
+         return OMX_COLOR_FormatYUV420SemiPlanar;
+     }
+ 
++    // Samsung (Exynos) camera HALs report video-frame-format as "nv21": the
++    // recording buffers are linear NV21 (Y plane + interleaved VU plane).
++    // Plain YUV420SemiPlanar means NV12 (UV) to the Exynos OMX encoder and
++    // swaps the chroma (blue wood). Hand it Samsung's own NV21 format, which
++    // the Exynos encoder accepts and feeds to MFC as NV21M.
++    if (!strcmp(colorFormat, "nv21")) {
++        static constexpr int32_t OMX_SEC_COLOR_FormatNV21Linear = 0x7F000011;  // Exynos_OMX_Def.h
++        return OMX_SEC_COLOR_FormatNV21Linear;
++    }
++
+     if (!strcmp(colorFormat, CameraParameters::PIXEL_FORMAT_YUV422I)) {
+         return OMX_COLOR_FormatYCbYCr;
+     }

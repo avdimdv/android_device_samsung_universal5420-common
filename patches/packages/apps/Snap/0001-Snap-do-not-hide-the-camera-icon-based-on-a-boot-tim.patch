@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: alpha-build <alpha-build@localhost>
+Date: Sun, 22 Nov 2026 19:11:25 +0100
+Subject: [PATCH 1/2] Snap: do not hide the camera icon based on a boot-time
+ Camera1 check
+
+The DisableCameraReceiver ran on BOOT_COMPLETED, called the Camera 1
+getNumberOfCameras(), saw 0 on this device and disabled
+com.android.camera.CameraLauncher permanently - so after a fresh flash the
+Camera app had no launcher entry even though both cameras work (Gallery
+reached it through IMAGE_CAPTURE, a different component). The receiver also
+set the camera2 mode, but CameraActivity does exactly the same at every
+start, so dropping the boot trigger changes nothing else.
+
+Change-Id: I4d04aae3fcebb7c2d32d8f95270421e1671906e3
+---
+ AndroidManifest.xml | 11 ++++++-----
+ 1 file changed, 6 insertions(+), 5 deletions(-)
+
+diff --git a/AndroidManifest.xml b/AndroidManifest.xml
+index 2534911..d3a0049 100755
+--- a/AndroidManifest.xml
++++ b/AndroidManifest.xml
+@@ -185,11 +185,12 @@
+             android:label="@string/quick_reader_name"
+             android:theme="@style/AppTheme" />
+ 
+-        <receiver android:name="com.android.camera.DisableCameraReceiver">
+-            <intent-filter>
+-                <action android:name="android.intent.action.BOOT_COMPLETED" />
+-            </intent-filter>
+-        </receiver>
++        <!-- BOOT_COMPLETED trigger removed (see device/samsung/sltexx patches): on sltexx
++             the receiver's Camera1 enumeration returns 0 cameras at boot, which permanently
++             disabled the CameraLauncher icon after every fresh flash, while the camera is
++             present and works. The camera2 mode it also set is computed by CameraActivity
++             itself at every start, so nothing else depended on this receiver. -->
++        <receiver android:name="com.android.camera.DisableCameraReceiver"/>
+         <receiver android:name="com.android.camera.CameraButtonIntentReceiver">
+             <intent-filter>
+                 <action android:name="android.intent.action.CAMERA_BUTTON"/>
+-- 
+2.25.1
+

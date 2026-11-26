@@ -22,14 +22,29 @@ wsl -d Ubuntu -- bash 03-overlay-local-tree.sh      # this repo (incl. uncommitt
 wsl -d Ubuntu -- bash 04-build.sh                   # libbt-vendor + audio HAL only
 wsl -d Ubuntu -- bash 04-build.sh bacon             # full flashable zip
 wsl -d Ubuntu -- bash 05-make-magisk-modules.sh     # artifacts\<module-id>.zip for testing without reflashing
+wsl -d Ubuntu -- bash 05b-make-key-migration.sh     # artifacts\key-migration-hazouph-to-aosp.zip
+INSTALLCLEAN=1 bash 04-build.sh bacon, then 07b-make-rom-release.sh   # ROM release in artifacts\rom-release\
 ```
 
 ## Changes to other repos: `patches/`
 
 `patches/<project path>/*.patch` (git format-patch) are applied by `03-overlay` to that project of
-the build tree, after resetting it to its manifest revision. Currently
-`patches/device/samsung/chagall-common/`: mixer_paths_0.xml mic gain + BT SCO AIF2/FLL2 fix
-(the ROM takes mixer_paths from chagall-common, not from this repo).
+the build tree, after resetting it to its manifest revision (or to `BASE` if that file exists):
+
+| Project | What |
+|---|---|
+| `device/samsung/chagall-common` | audio (mic gain, BT SCO, speaker EQ/limiter), fingerprint HAL fixes, 5 slots, "swipe" wording |
+| `kernel/samsung/exynos5420` | Wolfson Control regmap hook removed (needed for the speaker EQ/limiter) |
+| `vendor/lineage` | `EXCLUDE_AUDIOFX` guard (AudioFX removed) |
+| `frameworks/av` | camcorder: NV21 encoder input, Codec2 gralloc guards, swcodec APEX `/system/lib` fallback |
+| `frameworks/base` | Play Integrity Basic without root (GmsIntegritySpoof) |
+| `hardware/samsung_slsi/exynos` | libcsc null-plane guard (+ an exynos5430-only codec flag, no effect here) |
+| `packages/apps/Snap` | camera icon not hidden after a fresh flash; no forced software video stabilisation |
+
+The last four come from the Galaxy Alpha port (same chipset family, same tree) and are copied here
+unchanged. `frameworks/av` additionally gets 3 of HazouPH's camera patches at `envsetup` time
+(`device/samsung/universal5420-common-patches`, applied by its `vendorsetup.sh`); the result was
+checked to be identical to the tree the release ROM was built from.
 To change one: edit in `~/lineage/device/samsung/chagall-common`, commit, then
 `git format-patch --zero-commit -o <repo>/patches/device/samsung/chagall-common m/lineage-17.1`.
 

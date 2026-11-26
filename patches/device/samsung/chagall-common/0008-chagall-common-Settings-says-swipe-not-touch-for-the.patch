@@ -1,0 +1,42 @@
+From 9b604a3e636324a13500d4eea5dffc4fce82d820 Mon Sep 17 00:00:00 2001
+From: avdim <avdimdv@gmail.com>
+Date: Thu, 26 Nov 2026 23:56:26 +0100
+Subject: [PATCH] chagall-common: Settings says swipe, not touch, for the
+ fingerprint sensor
+
+The Tab S 10.5 has a swipe sensor in the home button below the screen; AOSP's
+enrolment pages ask to touch a sensor on the back. Same strings as the
+FingerprintSwipeSettings overlay of the chagall_fixes Magisk module.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Change-Id: If913abaa7f4459b667a9295793857f23032711c0
+---
+ .../apps/Settings/res/values/strings.xml         | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+ create mode 100644 overlay/packages/apps/Settings/res/values/strings.xml
+
+diff --git a/overlay/packages/apps/Settings/res/values/strings.xml b/overlay/packages/apps/Settings/res/values/strings.xml
+new file mode 100644
+index 0000000..f3652a2
+--- /dev/null
++++ b/overlay/packages/apps/Settings/res/values/strings.xml
+@@ -0,0 +1,16 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
++    <string name="security_settings_fingerprint_enroll_introduction_message">Just swipe a finger down over the home button to unlock your tablet, authorize purchases, or sign in to apps. Be careful whose fingerprints you add. Even one added print can do any of these things.\n\nNote: Your fingerprint may be less secure than a strong pattern or PIN.</string>
++    <string name="security_settings_fingerprint_enroll_find_sensor_title">Swipe the sensor</string>
++    <string name="security_settings_fingerprint_enroll_find_sensor_message">It’s the home button below the screen. Swipe your finger down over it.</string>
++    <string name="security_settings_fingerprint_enroll_start_title">Swipe the sensor</string>
++    <string name="security_settings_fingerprint_enroll_start_message">Swipe your finger down over the home button, slowly and straight, then lift it</string>
++    <string name="security_settings_fingerprint_enroll_repeat_title">Swipe again</string>
++    <string name="security_settings_fingerprint_enroll_repeat_message">Keep swiping to add the different parts of your fingerprint</string>
++    <string name="security_settings_fingerprint_enroll_touch_dialog_message">Swipe down over the home button below the screen. Use your index finger.</string>
++    <string name="security_settings_fingerprint_enroll_lift_touch_again">Lift your finger, then swipe again</string>
++    <!-- LineageOS builds this page from find_sensor_message_cm + a location word ("front");
++         the argument is not used here. -->
++    <string name="security_settings_fingerprint_enroll_find_sensor_message_cm" product="tablet">It’s the home button below the screen. Swipe your finger down over it.</string>
++    <string name="security_settings_fingerprint_enroll_find_sensor_message_cm" product="default">It’s the home button below the screen. Swipe your finger down over it.</string>
++</resources>
+-- 
+2.25.1
+

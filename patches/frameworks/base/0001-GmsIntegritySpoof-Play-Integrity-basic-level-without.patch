@@ -1,0 +1,427 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: alpha-build <alpha-build@localhost>
+Date: Thu, 19 Nov 2026 00:46:55 +0100
+Subject: [PATCH] GmsIntegritySpoof: Play Integrity basic level without root
+
+Google Play services (com.google.android.gms*) and the Play Store (com.android.vending*) get a
+PRIVATE copy-on-write view of the system property memory at process start, with ro.debuggable,
+ro.build.type, ro.build.tags and ro.boot.warranty_bit rewritten there (native code such as
+DroidGuard reads them from it). The rest of the system keeps the real values: with ro.debuggable=0
+system-wide Basic integrity FAILS, with it 0 only for Google's processes it passes (tested with the
+PIF Magisk module's setup on the same phone).
+
+In com.google.android.gms.unstable (and the Play Store if spoofVendingBuild is set) the Java
+android.os.Build values and Java system property reads are replaced with those from
+/system/etc/pif.json, and hardware key attestation is refused to DroidGuard callers. Without the
+json nothing happens; values go stale, replace the json (no rebuild). Optional json object
+"nativeProps" changes the native list.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Change-Id: Iaffc82a8c0850993eab5813eb702034c19d0570c
+---
+ core/java/android/app/ActivityThread.java     |   2 +
+ core/java/android/os/SystemProperties.java    |  32 ++++
+ .../internal/util/GmsIntegritySpoof.java      | 177 ++++++++++++++++++
+ core/jni/android_os_SystemProperties.cpp      |  76 ++++++++
+ .../security/keystore/AndroidKeyStoreSpi.java |   5 +
+ 5 files changed, 292 insertions(+)
+ create mode 100755 core/java/com/android/internal/util/GmsIntegritySpoof.java
+
+diff --git a/core/java/android/app/ActivityThread.java b/core/java/android/app/ActivityThread.java
+index 546f000159a0..819e52d5ee47 100644
+--- a/core/java/android/app/ActivityThread.java
++++ b/core/java/android/app/ActivityThread.java
+@@ -6151,6 +6151,8 @@ public final class ActivityThread extends ClientTransactionHandler {
+             }
+         }
+ 
++        com.android.internal.util.GmsIntegritySpoof.apply(data.processName);
++
+         // send up app name; do this *before* waiting for debugger
+         Process.setArgV0(data.processName);
+         android.ddm.DdmHandleAppName.setAppName(data.processName,
+diff --git a/core/java/android/os/SystemProperties.java b/core/java/android/os/SystemProperties.java
+index 45384105cc8f..8776db737e48 100644
+--- a/core/java/android/os/SystemProperties.java
++++ b/core/java/android/os/SystemProperties.java
+@@ -96,6 +96,7 @@ public class SystemProperties {
+     private static native void native_set(String key, String def);
+     private static native void native_add_change_callback();
+     private static native void native_report_sysprop_change();
++    private static native boolean native_private_override(String[] keys, String[] values);
+ 
+     /**
+      * Get the String value for the given {@code key}.
+@@ -109,6 +110,8 @@ public class SystemProperties {
+     @TestApi
+     public static String get(@NonNull String key) {
+         if (TRACK_KEY_ACCESS) onKeyAccess(key);
++        String spoofed = com.android.internal.util.GmsIntegritySpoof.overrideProp(key);
++        if (spoofed != null) return spoofed;
+         return native_get(key);
+     }
+ 
+@@ -126,6 +129,8 @@ public class SystemProperties {
+     @TestApi
+     public static String get(@NonNull String key, @Nullable String def) {
+         if (TRACK_KEY_ACCESS) onKeyAccess(key);
++        String spoofed = com.android.internal.util.GmsIntegritySpoof.overrideProp(key);
++        if (spoofed != null) return spoofed;
+         return native_get(key, def);
+     }
+ 
+@@ -141,6 +146,10 @@ public class SystemProperties {
+     @SystemApi
+     public static int getInt(@NonNull String key, int def) {
+         if (TRACK_KEY_ACCESS) onKeyAccess(key);
++        String spoofed = com.android.internal.util.GmsIntegritySpoof.overrideProp(key);
++        if (spoofed != null) {
++            try { return Integer.parseInt(spoofed); } catch (NumberFormatException e) { /* fall through */ }
++        }
+         return native_get_int(key, def);
+     }
+ 
+@@ -156,6 +165,10 @@ public class SystemProperties {
+     @SystemApi
+     public static long getLong(@NonNull String key, long def) {
+         if (TRACK_KEY_ACCESS) onKeyAccess(key);
++        String spoofed = com.android.internal.util.GmsIntegritySpoof.overrideProp(key);
++        if (spoofed != null) {
++            try { return Long.parseLong(spoofed); } catch (NumberFormatException e) { /* fall through */ }
++        }
+         return native_get_long(key, def);
+     }
+ 
+@@ -177,9 +190,28 @@ public class SystemProperties {
+     @TestApi
+     public static boolean getBoolean(@NonNull String key, boolean def) {
+         if (TRACK_KEY_ACCESS) onKeyAccess(key);
++        String spoofed = com.android.internal.util.GmsIntegritySpoof.overrideProp(key);
++        if (spoofed != null) {
++            if (spoofed.equals("1") || spoofed.equals("true") || spoofed.equals("y")
++                    || spoofed.equals("yes") || spoofed.equals("on")) return true;
++            if (spoofed.equals("0") || spoofed.equals("false") || spoofed.equals("n")
++                    || spoofed.equals("no") || spoofed.equals("off")) return false;
++        }
+         return native_get_boolean(key, def);
+     }
+ 
++    /**
++     * Gives the calling process a private copy-on-write view of the system property memory and
++     * rewrites the given properties in that view only. Other processes keep seeing the real values.
++     * Used by {@link com.android.internal.util.GmsIntegritySpoof}.
++     *
++     * @return true if at least one property was rewritten
++     * @hide
++     */
++    public static boolean privateOverride(@NonNull String[] keys, @NonNull String[] values) {
++        return native_private_override(keys, values);
++    }
++
+     /**
+      * Set the value for the given {@code key} to {@code val}.
+      *
+diff --git a/core/java/com/android/internal/util/GmsIntegritySpoof.java b/core/java/com/android/internal/util/GmsIntegritySpoof.java
+new file mode 100755
+index 000000000000..ad18c34f02dc
+--- /dev/null
++++ b/core/java/com/android/internal/util/GmsIntegritySpoof.java
+@@ -0,0 +1,177 @@
++/*
++ * Play Integrity (basic level) support for ROMs without root.
++ *
++ * Inside Google Play services' processes (com.google.android.gms*) and the Play Store
++ * (com.android.vending*), and only there:
++ *  - the process gets a PRIVATE copy-on-write view of the system property memory in which a few
++ *    properties that reveal a debug / modified device are rewritten (ro.debuggable, ro.build.type,
++ *    ro.build.tags, ro.boot.warranty_bit). Native code (DroidGuard) reads them from there. The rest of
++ *    the system keeps the real values: telling the whole system (e.g. ro.debuggable=0 for the
++ *    framework) makes the check fail, tested with the PIF Magisk module's setup on the same phone.
++ *  - in com.google.android.gms.unstable (DroidGuard) and, if "spoofVendingBuild" is true, in the
++ *    Play Store the Java values of android.os.Build and the Java system property reads are replaced
++ *    with those of a certified device from /system/etc/pif.json (same fields as the pif.prop of the
++ *    "Play Integrity Fix" module); hardware key attestation is refused to DroidGuard callers.
++ * Without the json file nothing happens. Values go stale when Google blocks a fingerprint: replace the
++ * json, no rebuild needed. Optional json object "nativeProps" overrides the default native list.
++ */
++package com.android.internal.util;
++
++import android.os.Build;
++import android.os.SystemProperties;
++import android.util.Log;
++
++import org.json.JSONObject;
++
++import java.io.File;
++import java.io.FileInputStream;
++import java.lang.reflect.Field;
++import java.nio.charset.StandardCharsets;
++import java.util.HashMap;
++import java.util.Iterator;
++import java.util.Map;
++
++/** @hide */
++public final class GmsIntegritySpoof {
++    private static final String TAG = "GmsIntegritySpoof";
++    private static final String GMS_PREFIX = "com.google.android.gms";
++    private static final String GMS_DROIDGUARD = "com.google.android.gms.unstable";
++    private static final String VENDING_PREFIX = "com.android.vending";
++    private static final String CONFIG = "/system/etc/pif.json";
++
++    /** True only inside a Java-spoofed process after the values were applied. */
++    public static volatile boolean sActive = false;
++    private static volatile Map<String, String> sProps = null;
++
++    private GmsIntegritySpoof() {}
++
++    /** Called from ActivityThread.handleBindApplication before any app code runs. */
++    public static void apply(String processName) {
++        if (processName == null) return;
++        boolean gms = processName.startsWith(GMS_PREFIX);
++        boolean vending = processName.startsWith(VENDING_PREFIX);
++        if (!gms && !vending) return;
++        try {
++            File f = new File(CONFIG);
++            if (!f.canRead()) return;
++            byte[] buf = new byte[(int) f.length()];
++            try (FileInputStream in = new FileInputStream(f)) {
++                int off = 0;
++                while (off < buf.length) {
++                    int n = in.read(buf, off, buf.length - off);
++                    if (n < 0) break;
++                    off += n;
++                }
++            }
++            JSONObject json = new JSONObject(new String(buf, StandardCharsets.UTF_8));
++
++            // 1. native view of the properties, private to this process
++            applyNativeProps(processName, json);
++
++            // 2. Java side: only DroidGuard and (optionally) the Play Store
++            boolean javaSpoof = GMS_DROIDGUARD.equals(processName)
++                    || (VENDING_PREFIX.equals(processName) && json.optBoolean("spoofVendingBuild", false));
++            if (!javaSpoof) return;
++
++            Map<String, String> props = new HashMap<>();
++            String fp = json.optString("FINGERPRINT", "");
++            if (!fp.isEmpty()) {
++                // BRAND/PRODUCT/DEVICE:RELEASE/ID/INCREMENTAL:TYPE/TAGS
++                String[] a = fp.split("[/:]");
++                if (a.length >= 8) {
++                    setField("BRAND", a[0]);
++                    setField("PRODUCT", a[1]);
++                    setField("DEVICE", a[2]);
++                    setField("ID", a[4]);
++                    setField("INCREMENTAL", a[5]);
++                    setField("TYPE", a[6]);
++                    setField("TAGS", a[7]);
++                    props.put("ro.product.brand", a[0]);
++                    props.put("ro.product.name", a[1]);
++                    props.put("ro.product.device", a[2]);
++                    props.put("ro.build.id", a[4]);
++                }
++                setField("FINGERPRINT", fp);
++                props.put("ro.build.fingerprint", fp);
++                props.put("ro.system.build.fingerprint", fp);
++                props.put("ro.vendor.build.fingerprint", fp);
++                props.put("ro.bootimage.build.fingerprint", fp);
++            }
++            String v = json.optString("MODEL", "");
++            if (!v.isEmpty()) { setField("MODEL", v); props.put("ro.product.model", v); }
++            v = json.optString("MANUFACTURER", "");
++            if (!v.isEmpty()) { setField("MANUFACTURER", v); props.put("ro.product.manufacturer", v); }
++            v = json.optString("SECURITY_PATCH", "");
++            if (!v.isEmpty()) { setField("SECURITY_PATCH", v); props.put("ro.build.version.security_patch", v); }
++            v = json.optString("DEVICE_INITIAL_SDK_INT", "");
++            if (!v.isEmpty()) { setField("FIRST_SDK_INT", v); props.put("ro.product.first_api_level", v); }
++
++            sProps = props;
++            sActive = true;
++            Log.i(TAG, "Build values replaced in " + processName);
++        } catch (Throwable t) {
++            Log.w(TAG, "not applied: " + t);
++        }
++    }
++
++    private static void applyNativeProps(String processName, JSONObject json) {
++        Map<String, String> nat = new HashMap<>();
++        JSONObject custom = json.optJSONObject("nativeProps");
++        if (custom != null) {
++            Iterator<String> it = custom.keys();
++            while (it.hasNext()) {
++                String k = it.next();
++                nat.put(k, custom.optString(k));
++            }
++        } else {
++            nat.put("ro.debuggable", "0");
++            nat.put("ro.build.type", "user");
++            nat.put("ro.build.tags", "release-keys");
++            nat.put("ro.boot.warranty_bit", "0");
++        }
++        String[] keys = nat.keySet().toArray(new String[0]);
++        String[] vals = new String[keys.length];
++        for (int i = 0; i < keys.length; i++) vals[i] = nat.get(keys[i]);
++        boolean ok = SystemProperties.privateOverride(keys, vals);
++        Log.i(TAG, "native property view of " + processName + (ok ? " rewritten" : " NOT rewritten"));
++    }
++
++    private static void setField(String name, Object value) {
++        Class<?>[] holders = { Build.class, Build.VERSION.class };
++        for (Class<?> c : holders) {
++            try {
++                Field field = c.getDeclaredField(name);
++                field.setAccessible(true);
++                if (field.getType() == int.class) {
++                    field.setInt(null, Integer.parseInt(String.valueOf(value)));
++                } else if (field.getType() == String.class) {
++                    field.set(null, String.valueOf(value));
++                } else {
++                    continue;
++                }
++                return;
++            } catch (NoSuchFieldException e) {
++                // try the next holder
++            } catch (Throwable t) {
++                Log.w(TAG, "field " + name + ": " + t);
++                return;
++            }
++        }
++    }
++
++    /** Replacement value for a Java system property read inside a Java-spoofed process, or null. */
++    public static String overrideProp(String key) {
++        if (!sActive) return null;
++        Map<String, String> p = sProps;
++        return p == null ? null : p.get(key);
++    }
++
++    /** True when the current call comes from Google's DroidGuard / attestation code. */
++    public static boolean isAttestationCaller() {
++        if (!sActive) return false;
++        for (StackTraceElement e : Thread.currentThread().getStackTrace()) {
++            if (e.getClassName().toLowerCase().contains("droidguard")) return true;
++        }
++        return false;
++    }
++}
+\ No newline at end of file
+diff --git a/core/jni/android_os_SystemProperties.cpp b/core/jni/android_os_SystemProperties.cpp
+index 9ec7517754d9..0ae9cded2c73 100644
+--- a/core/jni/android_os_SystemProperties.cpp
++++ b/core/jni/android_os_SystemProperties.cpp
+@@ -17,6 +17,16 @@
+ 
+ #define LOG_TAG "SysPropJNI"
+ 
++#include <sys/system_properties.h>
++#include <atomic>
++#include <sys/mman.h>
++#include <fcntl.h>
++#include <stdio.h>
++#include <string.h>
++#include <unistd.h>
++#include <string>
++#include <vector>
++
+ #include "android-base/logging.h"
+ #include "android-base/properties.h"
+ #include "cutils/properties.h"
+@@ -152,6 +162,70 @@ void SystemProperties_report_sysprop_change(JNIEnv /**env*/, jobject /*clazz*/)
+     report_sysprop_change();
+ }
+ 
++
++// Play Integrity support (GmsIntegritySpoof): give THIS process a private copy-on-write view of the
++// system property memory and rewrite some values there. Pages are only copied when written, so later
++// property changes by init stay visible; nothing outside this process changes.
++jboolean SystemProperties_privateOverride(JNIEnv* env, jclass /*clazz*/, jobjectArray keys,
++                                          jobjectArray values) {
++    struct Region { unsigned long start; size_t len; off_t off; std::string path; };
++    std::vector<Region> regions;
++    FILE* maps = fopen("/proc/self/maps", "re");
++    if (maps == nullptr) return JNI_FALSE;
++    char line[1024];
++    while (fgets(line, sizeof(line), maps) != nullptr) {
++        unsigned long start, end, off;
++        char path[512];
++        path[0] = 0;
++        if (sscanf(line, "%lx-%lx %*4s %lx %*s %*s %511s", &start, &end, &off, path) < 3) continue;
++        if (strncmp(path, "/dev/__properties__/", 20) != 0) continue;
++        regions.push_back({start, static_cast<size_t>(end - start), static_cast<off_t>(off), path});
++    }
++    fclose(maps);
++    if (regions.empty()) return JNI_FALSE;
++
++    for (const Region& r : regions) {
++        int fd = open(r.path.c_str(), O_RDONLY | O_CLOEXEC);
++        if (fd < 0) {
++            ALOGW("privateOverride: cannot open %s", r.path.c_str());
++            return JNI_FALSE;
++        }
++        void* p = mmap(reinterpret_cast<void*>(r.start), r.len, PROT_READ | PROT_WRITE,
++                       MAP_PRIVATE | MAP_FIXED, fd, r.off);
++        close(fd);
++        if (p == MAP_FAILED) {
++            ALOGW("privateOverride: cannot remap %s", r.path.c_str());
++            return JNI_FALSE;
++        }
++    }
++
++    int updated = 0;
++    jsize n = env->GetArrayLength(keys);
++    for (jsize i = 0; i < n; i++) {
++        ScopedUtfChars k(env, static_cast<jstring>(env->GetObjectArrayElement(keys, i)));
++        ScopedUtfChars v(env, static_cast<jstring>(env->GetObjectArrayElement(values, i)));
++        if (k.c_str() == nullptr || v.c_str() == nullptr) continue;
++        // __system_property_update() is not exported to platform libraries (init only), so write the
++        // record directly, the way bionic does it (dirty bit, value, new serial with the length in
++        // the top byte). The memory is this process's private copy, so no futex wake is needed.
++        struct PropRecord { std::atomic<uint32_t> serial; char value[PROP_VALUE_MAX]; };
++        const size_t len = strlen(v.c_str());
++        PropRecord* pi = reinterpret_cast<PropRecord*>(
++                const_cast<prop_info*>(__system_property_find(k.c_str())));
++        if (pi == nullptr || len >= PROP_VALUE_MAX) continue;
++        uint32_t serial = pi->serial.load(std::memory_order_relaxed);
++        if (serial & (1u << 16)) continue;  // "long" property: value lives elsewhere
++        serial |= 1;  // dirty bit; the final serial below is (this + 1), i.e. clean again
++        pi->serial.store(serial, std::memory_order_relaxed);
++        std::atomic_thread_fence(std::memory_order_release);
++        strlcpy(pi->value, v.c_str(), PROP_VALUE_MAX);
++        pi->serial.store((static_cast<uint32_t>(len) << 24) | ((serial + 1) & 0xffffff),
++                         std::memory_order_release);
++        updated++;
++    }
++    return updated > 0 ? JNI_TRUE : JNI_FALSE;
++}
++
+ }  // namespace
+ 
+ int register_android_os_SystemProperties(JNIEnv *env)
+@@ -174,6 +248,8 @@ int register_android_os_SystemProperties(JNIEnv *env)
+           (void*) SystemProperties_add_change_callback },
+         { "native_report_sysprop_change", "()V",
+           (void*) SystemProperties_report_sysprop_change },
++        { "native_private_override", "([Ljava/lang/String;[Ljava/lang/String;)Z",
++          (void*) SystemProperties_privateOverride },
+     };
+     return RegisterMethodsOrDie(env, "android/os/SystemProperties",
+                                 method_table, NELEM(method_table));
+diff --git a/keystore/java/android/security/keystore/AndroidKeyStoreSpi.java b/keystore/java/android/security/keystore/AndroidKeyStoreSpi.java
+index 51c42520ccc9..5e61c1c7d0cb 100644
+--- a/keystore/java/android/security/keystore/AndroidKeyStoreSpi.java
++++ b/keystore/java/android/security/keystore/AndroidKeyStoreSpi.java
+@@ -117,6 +117,11 @@ public class AndroidKeyStoreSpi extends KeyStoreSpi {
+             throw new NullPointerException("alias == null");
+         }
+ 
++        // Play Integrity basic-level support: no hardware attestation for Google's attestation code
++        if (com.android.internal.util.GmsIntegritySpoof.isAttestationCaller()) {
++            throw new UnsupportedOperationException();
++        }
++
+         final X509Certificate leaf = (X509Certificate) engineGetCertificate(alias);
+         if (leaf == null) {
+             return null;
+-- 
+2.25.1
+

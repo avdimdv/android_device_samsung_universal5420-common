@@ -1,0 +1,60 @@
+From 85fa89362f1540e377d33e2e359245e7e51a253d Mon Sep 17 00:00:00 2001
+From: avdim <avdimdv@gmail.com>
+Date: Mon, 23 Nov 2026 00:55:58 +0100
+Subject: [PATCH 2/4] C2AllocatorGralloc: guard against empty/ null buffer
+ handles
+
+media.swcodec crashed in a loop (SIGSEGV at 0x0) when the gralloc mapper
+returned success but an empty native handle: getNativeHandle() itself
+dereferences the null internal pointer. Check buffers[0] right after the
+callback and fail cleanly instead (upstream-equivalent guard).
+
+Change-Id: Ifcae4797e1d2e5db0445a2463e20d96127e37eae
+---
+ media/codec2/vndk/C2AllocatorGralloc.cpp | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/media/codec2/vndk/C2AllocatorGralloc.cpp b/media/codec2/vndk/C2AllocatorGralloc.cpp
+index af97e61fc2..acec95ee0c 100644
+--- a/media/codec2/vndk/C2AllocatorGralloc.cpp
++++ b/media/codec2/vndk/C2AllocatorGralloc.cpp
+@@ -978,7 +978,7 @@ c2_status_t C2AllocatorGralloc::Impl::newGraphicAllocation(
+                     if (err != C2_OK) {
+                         return;
+                     }
+-                    if (buffers.size() != 1u) {
++                    if (buffers.size() != 1u || buffers[0].getNativeHandle() == nullptr) {
+                         err = C2_CORRUPTED;
+                         return;
+                     }
+@@ -991,6 +991,10 @@ c2_status_t C2AllocatorGralloc::Impl::newGraphicAllocation(
+         if (err != C2_OK) {
+             return err;
+         }
++        if (buffer.getNativeHandle() == nullptr) {
++            ALOGE("allocate() returned a null native handle");
++            return C2_NO_MEMORY;
++        }
+         allocation->reset(new C2AllocationGralloc(
+                 info, mMapper2, buffer,
+                 C2HandleGralloc::WrapAndMoveNativeHandle(
+@@ -1035,7 +1039,7 @@ c2_status_t C2AllocatorGralloc::Impl::newGraphicAllocation(
+                     if (err != C2_OK) {
+                         return;
+                     }
+-                    if (buffers.size() != 1u) {
++                    if (buffers.size() != 1u || buffers[0].getNativeHandle() == nullptr) {
+                         err = C2_CORRUPTED;
+                         return;
+                     }
+@@ -1048,6 +1052,10 @@ c2_status_t C2AllocatorGralloc::Impl::newGraphicAllocation(
+         if (err != C2_OK) {
+             return err;
+         }
++        if (buffer.getNativeHandle() == nullptr) {
++            ALOGE("allocate() returned a null native handle");
++            return C2_NO_MEMORY;
++        }
+         allocation->reset(new C2AllocationGralloc(
+                 info, mMapper3, buffer,
+                 C2HandleGralloc::WrapAndMoveNativeHandle(

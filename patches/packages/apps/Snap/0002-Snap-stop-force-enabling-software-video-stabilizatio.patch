@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: alpha-build <alpha-build@localhost>
+Date: Sun, 22 Nov 2026 23:15:22 +0100
+Subject: [PATCH 2/2] Snap: stop force-enabling software video stabilization on
+ sltexx
+
+swVDIS (libvdis) worker is joined without timeout from stopPreview(); its
+frame supply stops when the ISP reconfigures, so the join never returns:
+HAL binder thread blocked -> setPreviewWindow/setParameters never answer ->
+Snap ANR. Reproduced on video recording and on preview reconfiguration
+(camera switch). Disabling the forced enable removes the deadlock; the only
+loss is the 2014 SW image stabilizer (no gyro on this sensor anyway).
+
+Change-Id: Id25443dd422cde94c955f3e5622882c45d9afb3d
+---
+ src/com/android/camera/VideoModule.java | 17 ++++++++++++-----
+ 1 file changed, 12 insertions(+), 5 deletions(-)
+
+diff --git a/src/com/android/camera/VideoModule.java b/src/com/android/camera/VideoModule.java
+index a1c5cfb..21a85b2 100644
+--- a/src/com/android/camera/VideoModule.java
++++ b/src/com/android/camera/VideoModule.java
+@@ -2973,12 +2973,19 @@ public class VideoModule implements CameraModule,
+ 
+         mParameters.set(CameraUtil.RECORDING_HINT, CameraUtil.TRUE);
+ 
+-        // Enable video stabilization. Convenience methods not available in API
+-        // level <= 14
++        // Video stabilization is deliberately NOT enabled here (sltexx patch).
++        // On this device the HAL implements it as SOFTWARE VDIS (SecCameraSWVDIS,
++        // libvdis.so). The swVDIS worker is joined without a timeout from
++        // ExynosCamera::stopPreview() -> m_swVDIS_Release() -> vsParamFree() ->
++        // pthread_join, and the worker is starved of frames whenever the video
++        // pipeline is reconfigured (kernel shows fimc_is_scp_video_dqbuf fail(-512)).
++        // Result: pthread_join never returns, the HAL binder thread blocks, and every
++        // stopPreview deadlocks - captured in /data/anr traces 2026-11-22 22:50 and
++        // 23:12. Repro: record video, or switch cameras while the preview pipeline
++        // reconfigures. Same root cause as the long-open "front/back switch hangs".
++        // The S5K2P2 has no gyro DIS, so what we lose is a 2014 software stabilizer
++        // that crops 2176x1216 -> 1920x1080 anyway.
+         String vstabSupported = mParameters.get("video-stabilization-supported");
+-        if ("true".equals(vstabSupported)) {
+-            mParameters.set("video-stabilization", "true");
+-        }
+ 
+         // Set picture size.
+         // The logic here is different from the logic in still-mode camera.
+-- 
+2.25.1
+

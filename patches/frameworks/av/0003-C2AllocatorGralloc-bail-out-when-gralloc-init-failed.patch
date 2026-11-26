@@ -1,0 +1,33 @@
+From f64d4ca403892f85cc6873efea7526eb2afaa23a Mon Sep 17 00:00:00 2001
+From: avdim <avdimdv@gmail.com>
+Date: Mon, 23 Nov 2026 19:51:28 +0100
+Subject: [PATCH 3/4] C2AllocatorGralloc: bail out when gralloc init failed
+ instead of dereferencing null mapper
+
+media.swcodec crash loop (SIGSEGV at C2AllocatorGralloc4Impl::newGraphicAllocation+0x112):
+when the ctor could not connect the mapper/allocator, mInit is C2_CORRUPTED and both
+mapper smart pointers are null; newGraphicAllocation still entered a mapper branch and
+crashed the whole swcodec process (seen via C2BasicGraphicBlockPool::fetchGraphicBlock
+from the soft AVC decoder).
+
+Change-Id: I2cf4cb6d82e990d9a96bd4dbce92b62e8be5c475
+---
+ media/codec2/vndk/C2AllocatorGralloc.cpp | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/media/codec2/vndk/C2AllocatorGralloc.cpp b/media/codec2/vndk/C2AllocatorGralloc.cpp
+index acec95ee0c..d3c3300e0a 100644
+--- a/media/codec2/vndk/C2AllocatorGralloc.cpp
++++ b/media/codec2/vndk/C2AllocatorGralloc.cpp
+@@ -936,6 +936,11 @@ C2AllocatorGralloc::Impl::Impl(id_t id, bool bufferQueue)
+ c2_status_t C2AllocatorGralloc::Impl::newGraphicAllocation(
+         uint32_t width, uint32_t height, uint32_t format, const C2MemoryUsage &usage,
+         std::shared_ptr<C2GraphicAllocation> *allocation) {
++    if (mInit != C2_OK) {
++        // Gralloc mapper/allocator never connected (e.g. no ashmemd in this sandbox).
++        // mMapper2/mMapper3 are null here; the branches below would dereference them.
++        return mInit;
++    }
+     uint64_t grallocUsage = static_cast<C2AndroidMemoryUsage>(usage).asGrallocUsage();
+     ALOGV("allocating buffer with usage %#llx => %#llx",
+           (long long)usage.expected, (long long)grallocUsage);

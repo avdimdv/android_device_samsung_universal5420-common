@@ -1,0 +1,40 @@
+From af97b2079cb6809018fd856061770fa186f3282c Mon Sep 17 00:00:00 2001
+From: avdim <avdimdv@gmail.com>
+Date: Tue, 24 Nov 2026 17:31:58 +0100
+Subject: [PATCH 4/4] swcodec apex: let sphal fall back to /system/lib on
+ non-VNDK devices
+
+On a vndk-lite device (ro.vndk.lite=true, no BOARD_VNDK_VERSION) there is
+no /system/lib/vndk-sp-29, so media.swcodec could not dlopen the gralloc
+mapper passthrough HAL ("android.hardware.graphics.mapper@2.0.so not
+found" from the sphal namespace). C2AllocatorGralloc then had no mapper
+and every software video decode with graphic output failed
+(C2SoftAvcDec: fetchGraphicBlock failed with status 14).
+
+Visible effect on the Galaxy Alpha: every video thumbnail fell back to
+the Exynos OMX hardware decoder, which sometimes deadlocks in freeNode
+and then blocks the next MediaRecorder.start() forever.
+
+Search /system/lib last, as the system's legacy linker config does.
+Verified on device: c2.android.avc.decoder decodes thumbnails, no
+fallback to OMX.Exynos.AVC.Decoder.
+
+Change-Id: I91494d203c72f4658b56ffc061645081c4332f9d
+---
+ apex/ld.config.txt | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/apex/ld.config.txt b/apex/ld.config.txt
+index af8ec066c0..68595beadc 100644
+--- a/apex/ld.config.txt
++++ b/apex/ld.config.txt
+@@ -131,3 +131,9 @@ namespace.sphal.link.platform.shared_libs = libEGL.so:libGLESv1_CM.so:libGLESv2.
+ 
+ # Add a link for libz.so which is llndk on devices where VNDK is not enforced.
+ namespace.sphal.link.platform.shared_libs += libz.so
++
++# Non-VNDK (vndk-lite) devices have no /system/${LIB}/vndk-sp${VNDK_VER}: the VNDK-SP libraries
++# the gralloc mapper passthrough HAL needs (android.hardware.graphics.mapper@2.0.so, libhidlbase, ...)
++# live in plain /system/${LIB}. Fall back to it, as the system's legacy linker config does.
++namespace.sphal.search.paths += /system/${LIB}
++namespace.sphal.permitted.paths += /system/${LIB}
