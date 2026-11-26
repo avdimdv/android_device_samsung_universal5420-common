@@ -56,6 +56,11 @@ finds that all its system apps changed their signature and does not boot properl
 4. TWRP → Wipe → Advanced → **Dalvik/ART Cache** and **Cache**.
 5. Reboot. The first boot takes several minutes and may restart once by itself.
 
+After **any** ROM install or update Android re-optimises every app for several minutes. The tablet
+is very slow meanwhile – the lock screen may not react to the password, and fingerprint swipes are
+often rejected. Wait until it calms down; after a reboot the password is always needed once before
+the fingerprint works.
+
 **B. Clean install** (any other ROM, or from HazouPH's 18.1/20/21 – Android cannot go back a
 version with data kept)
 
