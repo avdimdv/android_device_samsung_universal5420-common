@@ -23,11 +23,15 @@ jobs:
           bash pif/update-pif.sh
           rc=$?
           set -e
-          if [ "$rc" = 3 ]; then echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; fi
-          [ "$rc" = 0 ] || exit "$rc"
-          echo "changed=true" >> "$GITHUB_OUTPUT"
+          [ "$rc" = 0 ] || [ "$rc" = 3 ] || exit "$rc"
+          id=$(basename artifacts/pif-update-*.zip .zip | sed 's/^pif-update-//')
           echo "zip=$(ls artifacts/pif-update-*.zip)" >> "$GITHUB_OUTPUT"
-          echo "id=$(basename artifacts/pif-update-*.zip .zip | sed 's/^pif-update-//')" >> "$GITHUB_OUTPUT"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          # commit only when the json changed; publish whenever no release exists for this identity yet
+          echo "changed=$([ "$rc" = 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          if gh release view "pif-$id" >/dev/null 2>&1; then echo "publish=false"; else echo "publish=true"; fi >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
       - name: Commit pif.json
         if: steps.pif.outputs.changed == 'true'
         run: |
@@ -37,7 +41,7 @@ jobs:
           git commit -m "pif.json: Pixel Canary ${{ steps.pif.outputs.id }}"
           git push
       - name: Publish the TWRP zip
-        if: steps.pif.outputs.changed == 'true'
+        if: steps.pif.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
