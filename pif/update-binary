@@ -1,0 +1,31 @@
+#!/sbin/sh
+# Install a new Play Integrity identity: copies pif.json from this zip to /system/etc/pif.json.
+# For our LineageOS 17.1 builds (Galaxy Tab S 10.5 SM-T800, Galaxy Alpha SM-G850F) whose framework
+# reads that file. Changes nothing else; keeps the previous file as pif.json.bak.
+OUTFD=$2; ZIP=$3
+ui() { echo "ui_print $1" > /proc/self/fd/$OUTFD; echo "ui_print" > /proc/self/fd/$OUTFD; }
+ui "Play Integrity identity update"
+TMP=/tmp/pif-update; rm -rf $TMP; mkdir -p $TMP
+unzip -o "$ZIP" pif.json -d $TMP >/dev/null || { ui "! cannot read the zip"; exit 1; }
+
+# system-as-root (Tab S TWRP mounts /system_root) or classic /system (Alpha TWRP)
+ETC=""
+for m in /system_root /system; do
+  mount $m 2>/dev/null; mount -o rw,remount $m 2>/dev/null
+  for e in $m/system/etc $m/etc; do
+    [ -f $e/../build.prop ] && grep -q "^ro.lineage.version=17.1" $e/../build.prop && { ETC=$e; break 2; }
+  done
+done
+[ -n "$ETC" ] || { ui "! no LineageOS 17.1 system found - nothing changed"; exit 1; }
+grep -q "GmsIntegritySpoof" $ETC/../framework/framework.jar 2>/dev/null \
+  || ui "Note: this framework may not read pif.json (installing anyway)."
+touch $ETC/.pif-write-test 2>/dev/null && rm -f $ETC/.pif-write-test \
+  || { ui "! system is read-only - nothing changed"; exit 1; }
+[ -f $ETC/pif.json ] && cp -p $ETC/pif.json $ETC/pif.json.bak
+cp $TMP/pif.json $ETC/pif.json && chmod 644 $ETC/pif.json && chown 0:0 $ETC/pif.json
+chcon u:object_r:system_file:s0 $ETC/pif.json 2>/dev/null
+sync
+ui "$(grep FINGERPRINT $ETC/pif.json | cut -d'"' -f4)"
+ui "Done. Reboot."
+rm -rf $TMP
+exit 0

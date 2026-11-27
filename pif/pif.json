@@ -1,0 +1,8 @@
+{
+  "FINGERPRINT": "google/bluejay_beta/bluejay:CANARY/ZP11.261016.008/16754936:user/release-keys",
+  "MANUFACTURER": "Google",
+  "MODEL": "Pixel 6a",
+  "SECURITY_PATCH": "2026-11-05",
+  "DEVICE_INITIAL_SDK_INT": 32,
+  "spoofVendingBuild": true
+}

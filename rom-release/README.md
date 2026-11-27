@@ -28,8 +28,8 @@ Everything the `chagall_fixes` module and `chagall_kernel_nohook.zip` do, now in
 - **Fingerprint (swipe sensor in the home button) works**: fixed HAL (unlock, enrol/remove
   reporting, no hangs or crashes, no "Sensor is busy"), **5 slots instead of 3**, and Settings says
   **"swipe"** and points to the home button.
-- **Play Integrity "Basic" passes without root or modules** (framework spoof for Google Play
-  Services). Device/Strong do not pass on this hardware.
+- **Play Integrity "Basic" without root** (see "Play Integrity" below). Device/Strong are not
+  possible on this hardware.
 - **Camcorder**: correct colours and no hang when saving (Exynos encoder gets the camera's native
   NV21 format; software video decoder loads on this device).
 
@@ -68,6 +68,19 @@ version with data kept)
 2. Install the ROM zip; optionally Google apps for Android 10 ARM (e.g. MindTheGapps 10.0.0 arm)
    and Magisk.
 3. Reboot.
+
+## Play Integrity
+
+The framework hands Google Play services the identity of a certified Pixel (Canary build) from
+`/system/etc/pif.json`. Tested on the Tab S and the Galaxy Alpha (2026-11-27): **Basic passes**
+without root; Device/Strong never pass on this hardware.
+
+- **Without Magisk**: nothing to do. When Google retires the identity, Basic starts failing –
+  install the newest `pif-update-….zip` from this repository's Releases in TWRP (it replaces only
+  `pif.json`). A weekly job publishes a new one whenever Google has a newer Canary build.
+- **With Magisk**: Google detects root and Basic fails even with the identity. Install the
+  Play Integrity Fix module (it updates its identity itself) and add Google Play services and the
+  Play Store to Magisk's DenyList.
 
 ## Fingerprint: how to enrol
 

@@ -1,0 +1,59 @@
+# Weekly: fetch the newest Pixel Canary identity (pif/update-pif.sh). When it changed, commit the new
+# pif/pif.json (the next ROM build ships it) and publish a release with the TWRP zip that installs it
+# on a device that already runs the ROM. Nothing happens when the identity is unchanged.
+name: Play Integrity identity update
+
+on:
+  schedule:
+    - cron: "17 5 * * 1"   # Mondays 05:17 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch identity and build the zip
+        id: pif
+        run: |
+          set +e
+          bash pif/update-pif.sh
+          rc=$?
+          set -e
+          if [ "$rc" = 3 ]; then echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          [ "$rc" = 0 ] || exit "$rc"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "zip=$(ls artifacts/pif-update-*.zip)" >> "$GITHUB_OUTPUT"
+          echo "id=$(basename artifacts/pif-update-*.zip .zip | sed 's/^pif-update-//')" >> "$GITHUB_OUTPUT"
+      - name: Commit pif.json
+        if: steps.pif.outputs.changed == 'true'
+        run: |
+          git config user.name "pif-update bot"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pif/pif.json
+          git commit -m "pif.json: Pixel Canary ${{ steps.pif.outputs.id }}"
+          git push
+      - name: Publish the TWRP zip
+        if: steps.pif.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha256sum "${{ steps.pif.outputs.zip }}" | sed 's#artifacts/##' > SHA256SUMS
+          cat > notes.md <<'EOF'
+          New Play Integrity identity for our LineageOS 17.1 builds (Tab S 10.5 SM-T800, Galaxy Alpha SM-G850F).
+
+          **Only needed when "Basic" integrity started failing** – Google retires these identities from time to time.
+
+          TWRP → Install → this zip → Reboot. It replaces `/system/etc/pif.json` and nothing else (the old file
+          is kept as `pif.json.bak`). Without root nothing else is needed. With Magisk installed, Google detects
+          root and Basic fails anyway: use the Play Integrity Fix module instead (it updates itself).
+
+          `pif.json` inside the zip shows the identity (a Google Pixel Canary build).
+          EOF
+          gh release create "pif-${{ steps.pif.outputs.id }}" \
+            --title "Play Integrity identity ${{ steps.pif.outputs.id }}" \
+            --notes-file notes.md --latest=false \
+            "${{ steps.pif.outputs.zip }}" SHA256SUMS

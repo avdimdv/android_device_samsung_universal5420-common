@@ -34,6 +34,11 @@ TARGET_BOOTANIMATION_HALF_RES := true
 PRODUCT_COPY_FILES += \
     $(COMMON_PATH)/configs/ld.config.txt:$(TARGET_COPY_OUT_VENDOR)/etc/swcodec/ld.config.txt
 
+# Play Integrity "Basic": certified-device identity read by GmsIntegritySpoof (frameworks/base
+# patch). Refreshed by pif/update-pif.sh; on a device by the pif-update TWRP zip.
+PRODUCT_COPY_FILES += \
+    $(COMMON_PATH)/pif/pif.json:$(TARGET_COPY_OUT_SYSTEM)/etc/pif.json
+
 # Audio
 PRODUCT_PACKAGES += \
     audio.primary.universal5420 \
